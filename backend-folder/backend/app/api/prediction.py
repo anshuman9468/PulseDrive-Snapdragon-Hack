@@ -69,7 +69,7 @@ async def predict(request: PredictionRequest) -> PredictionResponse:
             )
 
         # Call prediction service
-        prediction_response = prediction_service.predict(request)
+        prediction_response = await prediction_service.predict(request)
 
         logger.info(
             f"Prediction generated for vehicle {request.vehicleId}: "

@@ -1,225 +1,136 @@
 import logging
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, Optional
+import asyncio
 
 from app.models.prediction import PredictionRequest, PredictionResponse
+from app.orchestrator.orchestrator import AgentOrchestrator
+from app.config.database import get_database
 
 logger = logging.getLogger(__name__)
 
-
 class PredictionService:
-    """Production-ready prediction service with mock implementation.
-    
-    This service is designed for easy transition to ML model-based predictions:
-    1. Mock predictions return realistic health data
-    2. Can load joblib model at initialization
-    3. API contract remains unchanged when switching to real model
-    4. Features dict supports any input sensor data format
-    """
+    """Service layer coordinating AgentOrchestrator runs, persistence, and live WebSocket streams."""
 
-    def __init__(self, model_path: Optional[str] = None):
-        """Initialize the prediction service.
-        
-        Args:
-            model_path: Optional path to joblib model file. If not provided, uses mock predictions.
-        """
-        self.model = None
-        self.use_mock = True
-
-        if model_path:
-            self._load_model(model_path)
-
-    def _load_model(self, model_path: str) -> None:
-        """Load a joblib-serialized model.
-        
-        Args:
-            model_path: Path to the .pkl or .joblib file
-            
-        Raises:
-            ImportError: If joblib is not installed
-            FileNotFoundError: If model file doesn't exist
-            Exception: If model loading fails
-        """
+    def __init__(self, orchestrator: Optional[AgentOrchestrator] = None):
+        """Initialize the prediction service with an AgentOrchestrator instance."""
+        self.orchestrator = orchestrator or AgentOrchestrator()
         try:
-            import joblib
-        except ImportError:
-            logger.warning("joblib not installed. Using mock predictions. Install with: pip install joblib")
-            return
-
-        try:
-            model_file = Path(model_path)
-            if not model_file.exists():
-                raise FileNotFoundError(f"Model file not found: {model_path}")
-
-            self.model = joblib.load(model_path)
-            self.use_mock = False
-            logger.info(f"Loaded ML model from {model_path}")
+            self.db = get_database()
+            self.predictions_collection = self.db["predictions"]
+            logger.info("Connected to MongoDB predictions collection")
         except Exception as e:
-            logger.error(f"Failed to load model from {model_path}: {e}. Falling back to mock predictions.")
-            self.use_mock = True
+            logger.error(f"Failed to initialize database connection: {e}")
+            self.predictions_collection = None
 
-    def predict(self, request: PredictionRequest) -> PredictionResponse:
-        """Generate a health prediction for a vehicle.
+    async def predict(self, request: PredictionRequest) -> PredictionResponse:
+        """Generate a health prediction using the multi-agent orchestration pipeline.
         
         Args:
-            request: PredictionRequest containing vehicleId and features
+            request: PredictionRequest containing vehicleId and features (sensor telemetry).
             
         Returns:
-            PredictionResponse with healthScore, status, confidence, and recommendation
+            PredictionResponse with healthScore, status, confidence, recommendations, and agent details.
         """
-        if self.use_mock or self.model is None:
-            return self._mock_predict(request)
-        else:
-            return self._model_predict(request)
-
-    def _mock_predict(self, request: PredictionRequest) -> PredictionResponse:
-        """Generate mock predictions for demonstration.
+        vehicle_id = request.vehicleId
+        features = request.features or {}
         
-        This returns realistic data that can be used for development and testing.
-        Replace this with actual model inference when model.pkl is available.
+        # Add vehicle context to features dictionary if not present
+        if "vehicleId" not in features:
+            features["vehicleId"] = vehicle_id
+
+        # Retrieve previous risk score from MongoDB for trend calculation
+        last_risk_score = None
+        if self.predictions_collection is not None:
+            try:
+                # Retrieve the latest prediction document sorted by timestamp descending
+                last_doc = await asyncio.to_thread(
+                    lambda: self.predictions_collection.find_one(
+                        {"vehicleId": vehicle_id},
+                        sort=[("timestamp", -1)]
+                    )
+                )
+                if last_doc and "riskScore" in last_doc:
+                    last_risk_score = float(last_doc["riskScore"])
+                    logger.info(f"Retrieved previous risk score of {last_risk_score} for vehicle {vehicle_id}")
+            except Exception as e:
+                logger.error(f"Error fetching historical risk score for vehicle {vehicle_id}: {e}")
+
+        # 1. Run multi-agent orchestrator with historical context
+        orchestrator_result = await self.orchestrator.execute(features, last_risk_score=last_risk_score)
+
+        # Map DecisionEngineResult to PredictionResponse
+        status_map = {
+            "Safe": "healthy",
+            "Warning": "warning",
+            "Critical": "critical",
+            "Emergency": "emergency"
+        }
+        status_str = status_map.get(orchestrator_result.vehicle_status, "healthy")
         
-        Args:
-            request: PredictionRequest
-            
-        Returns:
-            PredictionResponse with mock data
-        """
-        # Generate deterministic mock data based on vehicleId for consistency
-        vehicle_id_hash = hash(request.vehicleId) % 100
+        # Calculate overall confidence as average confidence of executed agents
+        conf = 1.0
+        if orchestrator_result.agent_results:
+            conf = sum(r.confidence for r in orchestrator_result.agent_results) / len(orchestrator_result.agent_results)
 
-        # Mock logic: use hash of vehicle ID to determine health
-        if vehicle_id_hash < 30:
-            health_score = 85 + (vehicle_id_hash % 15)  # 85-99
-            status = "healthy"
-            confidence = 0.92 + (vehicle_id_hash % 8) / 100
-            recommendation = "Continue regular maintenance schedule"
-        elif vehicle_id_hash < 70:
-            health_score = 60 + (vehicle_id_hash % 25)  # 60-84
-            status = "warning"
-            confidence = 0.85 + (vehicle_id_hash % 10) / 100
-            recommendation = "Schedule preventive maintenance soon"
-        else:
-            health_score = 20 + (vehicle_id_hash % 40)  # 20-59
-            status = "critical"
-            confidence = 0.88 + (vehicle_id_hash % 10) / 100
-            recommendation = "Immediate inspection and service required"
-
-        # Cap values at valid ranges
-        health_score = min(100, max(0, health_score))
-        confidence = min(1.0, max(0.0, confidence))
-
-        return PredictionResponse(
-            vehicleId=request.vehicleId,
-            healthScore=health_score,
-            status=status,
-            confidence=confidence,
-            recommendation=recommendation,
-            timestamp=datetime.utcnow(),
+        primary_rec = (
+            orchestrator_result.recommendations[0]
+            if orchestrator_result.recommendations
+            else "Continue regular maintenance schedule"
         )
 
-    def _model_predict(self, request: PredictionRequest) -> PredictionResponse:
-        """Generate predictions using loaded ML model.
-        
-        This method is called when a real model is loaded.
-        Adapt this to your specific model's input/output format.
-        
-        Args:
-            request: PredictionRequest
-            
-        Returns:
-            PredictionResponse
-            
-        Raises:
-            Exception: If model prediction fails
-        """
+        response = PredictionResponse(
+            vehicleId=vehicle_id,
+            healthScore=orchestrator_result.health_score,
+            status=status_str,
+            confidence=round(conf, 2),
+            recommendation=primary_rec,
+            timestamp=datetime.utcnow(),
+            riskScore=orchestrator_result.risk_score,
+            failureProbability=orchestrator_result.failure_probability,
+            riskTrend=orchestrator_result.risk_trend,
+            riskConfidence=orchestrator_result.risk_confidence,
+            primaryFault=orchestrator_result.primary_fault,
+            secondaryFaults=orchestrator_result.secondary_faults,
+            agentResults=[r.model_dump() for r in orchestrator_result.agent_results]
+        )
+
+        # 2. Persist prediction output to MongoDB
+        if self.predictions_collection is not None:
+            try:
+                # Run DB write in thread pool to prevent blocking event loop
+                document = response.model_dump(mode="python")
+                await asyncio.to_thread(self.predictions_collection.insert_one, document)
+                logger.info(f"Saved health prediction to MongoDB for vehicle {vehicle_id}")
+            except Exception as e:
+                logger.error(f"Failed to persist prediction to MongoDB: {e}")
+
+        # 3. Stream telemetry and final decision through WebSocket
         try:
-            # Prepare features for model
-            features = self._prepare_features(request.features)
-
-            # Call model (adapt to your specific model interface)
-            # Example: prediction = self.model.predict([features])[0]
-            # Example: confidence = self.model.predict_proba([features])[0].max()
-            prediction_output = self.model.predict([features])
-
-            # Extract results (adapt based on your model's output format)
-            health_score = float(prediction_output[0])
-            status = self._score_to_status(health_score)
-            confidence = 0.90  # Adapt based on your model's confidence output
-
-            recommendation = self._generate_recommendation(status, health_score)
-
-            return PredictionResponse(
-                vehicleId=request.vehicleId,
-                healthScore=health_score,
-                status=status,
-                confidence=confidence,
-                recommendation=recommendation,
-                timestamp=datetime.utcnow(),
-            )
+            # Local import to avoid any potential circular dependencies at module level
+            from app.api.websocket import manager
+            
+            # Broadcast message structure representing the new analysis
+            broadcast_payload = {
+                "type": "prediction_update",
+                "vehicleId": vehicle_id,
+                "healthScore": response.healthScore,
+                "status": response.status,
+                "riskScore": response.riskScore,
+                "failureProbability": response.failureProbability,
+                "riskTrend": response.riskTrend,
+                "riskConfidence": response.riskConfidence,
+                "primaryFault": response.primaryFault,
+                "secondaryFaults": response.secondaryFaults,
+                "recommendation": response.recommendation,
+                "agentResults": response.agentResults,
+                "timestamp": response.timestamp.isoformat()
+            }
+            
+            # Non-blocking async broadcast
+            await manager.broadcast(broadcast_payload)
+            logger.info(f"Streamed prediction update via WebSocket for vehicle {vehicle_id}")
         except Exception as e:
-            logger.error(f"Model prediction failed: {e}. Falling back to mock.")
-            self.use_mock = True
-            return self._mock_predict(request)
+            logger.warning(f"Failed to stream prediction update via WebSocket: {e}")
 
-    @staticmethod
-    def _prepare_features(features: Optional[Dict[str, Any]]) -> list:
-        """Prepare input features for model prediction.
-        
-        Adapt this to your model's expected input format.
-        
-        Args:
-            features: Raw features from request
-            
-        Returns:
-            Features in format expected by model (e.g., list or numpy array)
-        """
-        if features is None:
-            features = {}
-
-        # Example: extract specific fields in order expected by model
-        # Adapt this based on your ML model's feature requirements
-        feature_list = [
-            features.get("rpm", 0),
-            features.get("temperature", 0),
-            features.get("mileage", 0),
-            features.get("fuel_consumption", 0),
-            features.get("battery_voltage", 0),
-        ]
-
-        return feature_list
-
-    @staticmethod
-    def _score_to_status(health_score: float) -> str:
-        """Convert health score to status label.
-        
-        Args:
-            health_score: Score from 0-100
-            
-        Returns:
-            Status: "healthy", "warning", or "critical"
-        """
-        if health_score >= 75:
-            return "healthy"
-        elif health_score >= 50:
-            return "warning"
-        else:
-            return "critical"
-
-    @staticmethod
-    def _generate_recommendation(status: str, health_score: float) -> str:
-        """Generate recommendation based on status and health score.
-        
-        Args:
-            status: Current health status
-            health_score: Numeric health score
-            
-        Returns:
-            Recommended action string
-        """
-        if status == "healthy":
-            return "Continue regular maintenance schedule"
-        elif status == "warning":
-            return f"Schedule preventive maintenance soon (health: {health_score:.1f}%)"
-        else:
-            return f"⚠️ Immediate inspection required (health: {health_score:.1f}%)"
+        return response
