@@ -128,8 +128,52 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 )
                 continue
 
+            # Calculate health metrics
+            temp = sensor_data.temperature
+            volt = sensor_data.voltage
+            
+            if temp >= 90 or volt < 10.5:
+                health_score = 35
+                status = "Critical"
+                rul = 10
+                diagnosis = {
+                    "message": "Critical engine condition detected.",
+                    "confidence": 99,
+                    "recommendation": "Stop the vehicle immediately and inspect the engine & battery.",
+                }
+            elif temp >= 75 or volt < 11.5:
+                health_score = 68
+                status = "Warning"
+                rul = 35
+                diagnosis = {
+                    "message": "Vehicle health is degrading.",
+                    "confidence": 95,
+                    "recommendation": "Schedule maintenance within 48 hours.",
+                }
+            else:
+                health_score = 95
+                status = "Healthy"
+                rul = 90
+                diagnosis = {
+                    "message": "Vehicle is operating normally.",
+                    "confidence": 98,
+                    "recommendation": "No maintenance required.",
+                }
+
+            # Prepare broadcast packet containing all sensor fields + health metrics
+            sensor_dict = sensor_data.model_dump(mode="python")
+            if isinstance(sensor_dict.get("timestamp"), datetime):
+                sensor_dict["timestamp"] = sensor_dict["timestamp"].isoformat()
+            
+            sensor_dict.update({
+                "healthScore": health_score,
+                "status": status,
+                "remainingUsefulLife": rul,
+                "aiDiagnosis": diagnosis
+            })
+
             # Build the broadcast message with metadata
-            broadcast_message = _build_broadcast_message(data)
+            broadcast_message = _build_broadcast_message(sensor_dict)
 
             logger.info(
                 f"Broadcasting sensor data from {broadcast_message.get('source', 'unknown')} "

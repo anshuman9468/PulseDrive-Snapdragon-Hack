@@ -3,17 +3,19 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from app.models.sensor import SensorData
+
 
 class PredictionRequest(BaseModel):
     """Request model for vehicle health prediction.
     
     Attributes:
         vehicleId: Unique identifier for the vehicle
-        features: Input features for prediction (e.g., sensor data, metrics)
+        features: Input features matching new SensorData schema
         timestamp: When the prediction was requested
     """
     vehicleId: str = Field(..., min_length=1, description="Vehicle identifier")
-    features: Optional[dict] = Field(default_factory=dict, description="Input features for prediction")
+    features: Optional[SensorData] = Field(None, description="Input features matching new SensorData schema")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Timestamp of prediction request")
 
 

@@ -3,6 +3,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.models.sensor import GPS, MPUData, GasSensor
+
 
 class AIDiagnosis(BaseModel):
     message: str = Field(..., description="AI diagnostic message")
@@ -28,11 +30,13 @@ class ConnectivityStatus(BaseModel):
 
 class DashboardData(BaseModel):
     vehicleId: str = Field(..., description="Vehicle identifier")
+    timestamp: datetime = Field(..., description="Timestamp of the latest sensor reading")
     temperature: float = Field(..., description="Latest temperature reading")
     voltage: float = Field(..., description="Latest voltage reading")
-    gps: dict[str, Any] = Field(..., description="GPS location data")
-    mpu6050: dict[str, Any] = Field(..., description="MPU6050 sensor data")
-    timestamp: datetime = Field(..., description="Timestamp of the latest sensor reading")
+    gasSensor: GasSensor = Field(..., description="Gas sensor reading")
+    gps: GPS = Field(..., description="GPS location data")
+    mpu1: MPUData = Field(..., description="MPU1 sensor data")
+    mpu2: MPUData = Field(..., description="MPU2 sensor data")
 
     healthScore: int = Field(
         ...,

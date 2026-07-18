@@ -15,6 +15,38 @@ from app.models.prediction import PredictionRequest, PredictionResponse
 from app.services.prediction_service import PredictionService
 
 
+def get_mock_sensor_data(vehicle_id: str, temperature: float = 85.0, voltage: float = 13.5) -> dict:
+    return {
+        "vehicleId": vehicle_id,
+        "temperature": temperature,
+        "voltage": voltage,
+        "gasSensor": {
+            "value": 425,
+            "unit": "ppm"
+        },
+        "gps": {
+            "lat": 28.6139,
+            "lng": 77.2090
+        },
+        "mpu1": {
+            "accX": 4.8,
+            "accY": 3.9,
+            "accZ": 10.2,
+            "gyroX": 2.7,
+            "gyroY": 2.4,
+            "gyroZ": 2.1
+        },
+        "mpu2": {
+            "accX": 0.8,
+            "accY": 1.2,
+            "accZ": 9.7,
+            "gyroX": 0.3,
+            "gyroY": 0.5,
+            "gyroZ": 0.2
+        }
+    }
+
+
 def example_1_mock_predictions():
     """Example 1: Generate mock predictions."""
     print("\n" + "=" * 60)
@@ -31,13 +63,7 @@ def example_1_mock_predictions():
     for vehicle_id in vehicles:
         request = PredictionRequest(
             vehicleId=vehicle_id,
-            features={
-                "rpm": 3000,
-                "temperature": 85,
-                "mileage": 45000,
-                "fuel_consumption": 8.5,
-                "battery_voltage": 13.5,
-            },
+            features=get_mock_sensor_data(vehicle_id),
         )
 
         response = service.predict(request)
@@ -81,24 +107,12 @@ def example_3_custom_features():
     # Different feature scenarios
     scenarios = [
         {
-            "name": "High RPM, High Temperature",
-            "features": {
-                "rpm": 5500,
-                "temperature": 95,
-                "mileage": 120000,
-                "fuel_consumption": 12.0,
-                "battery_voltage": 12.5,
-            },
+            "name": "High Temperature, Low Voltage",
+            "features": get_mock_sensor_data("VH_SCENARIO", temperature=95.0, voltage=10.2),
         },
         {
             "name": "Normal Operation",
-            "features": {
-                "rpm": 2000,
-                "temperature": 80,
-                "mileage": 30000,
-                "fuel_consumption": 7.5,
-                "battery_voltage": 13.8,
-            },
+            "features": get_mock_sensor_data("VH_SCENARIO", temperature=80.0, voltage=13.8),
         },
         {
             "name": "Minimal Data",
@@ -130,13 +144,11 @@ def example_4_batch_prediction():
 
     # Simulate fleet data
     fleet = {
-        f"TRUCK_{i:04d}": {
-            "rpm": 2000 + (i % 3) * 500,
-            "temperature": 80 + (i % 5) * 2,
-            "mileage": 10000 * i,
-            "fuel_consumption": 7.0 + (i % 3),
-            "battery_voltage": 13.2 + (i % 3) * 0.3,
-        }
+        f"TRUCK_{i:04d}": get_mock_sensor_data(
+            f"TRUCK_{i:04d}",
+            temperature=80.0 + (i % 5) * 2,
+            voltage=13.2 + (i % 3) * 0.3
+        )
         for i in range(1, 6)
     }
 
@@ -180,7 +192,7 @@ def example_5_response_serialization():
 
     request = PredictionRequest(
         vehicleId="VH_JSON_TEST",
-        features={"rpm": 3000, "temperature": 85},
+        features=get_mock_sensor_data("VH_JSON_TEST"),
     )
 
     response = service.predict(request)

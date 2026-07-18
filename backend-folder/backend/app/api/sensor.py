@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pymongo import DESCENDING
 
 from app.config.database import get_database
-from app.models.sensor import SensorData
+from app.models.sensor import SensorData, SensorResponse, HistoryResponse
 
 router = APIRouter(prefix="/api", tags=["Sensor"])
 
@@ -11,7 +11,7 @@ db = get_database()
 sensor_collection = db["sensor_data"]
 
 
-@router.post("/sensor-data")
+@router.post("/sensor-data", response_model=SensorResponse)
 async def create_sensor_data(sensor_data: SensorData):
     """
     Store incoming sensor data in MongoDB
@@ -32,7 +32,7 @@ async def create_sensor_data(sensor_data: SensorData):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/live")
+@router.get("/live", response_model=SensorResponse)
 async def get_live_sensor_data():
     """
     Fetch latest sensor reading
@@ -53,14 +53,17 @@ async def get_live_sensor_data():
 
         return {
             "success": True,
+            "message": "Latest sensor data retrieved successfully",
             "data": latest
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/history")
+@router.get("/history", response_model=HistoryResponse)
 async def get_sensor_history(
     vehicleId: str | None = Query(default=None)
 ):

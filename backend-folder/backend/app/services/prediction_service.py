@@ -1,9 +1,10 @@
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from app.models.prediction import PredictionRequest, PredictionResponse
+from app.models.sensor import SensorData
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ class PredictionService:
     1. Mock predictions return realistic health data
     2. Can load joblib model at initialization
     3. API contract remains unchanged when switching to real model
-    4. Features dict supports any input sensor data format
+    4. Features dict/object supports any input sensor data format
     """
 
     def __init__(self, model_path: Optional[str] = None):
@@ -163,31 +164,30 @@ class PredictionService:
             return self._mock_predict(request)
 
     @staticmethod
-    def _prepare_features(features: Optional[Dict[str, Any]]) -> list:
+    def _prepare_features(features: Optional[Union[SensorData, Dict[str, Any]]]) -> Dict[str, Any]:
         """Prepare input features for model prediction.
         
-        Adapt this to your model's expected input format.
+        Returns the clean sensor object matching the new schema directly, 
+        without hardcoded preprocessing.
         
         Args:
-            features: Raw features from request
+            features: Raw features from request (either SensorData model or dict)
             
         Returns:
-            Features in format expected by model (e.g., list or numpy array)
+            Clean sensor dictionary representing the new schema directly
         """
         if features is None:
-            features = {}
+            return {}
 
-        # Example: extract specific fields in order expected by model
-        # Adapt this based on your ML model's feature requirements
-        feature_list = [
-            features.get("rpm", 0),
-            features.get("temperature", 0),
-            features.get("mileage", 0),
-            features.get("fuel_consumption", 0),
-            features.get("battery_voltage", 0),
-        ]
+        if isinstance(features, SensorData):
+            return features.model_dump(mode="python")
 
-        return feature_list
+        # Fallback if a dictionary is provided: validate it first
+        try:
+            validated = SensorData.model_validate(features)
+            return validated.model_dump(mode="python")
+        except Exception:
+            return features
 
     @staticmethod
     def _score_to_status(health_score: float) -> str:
