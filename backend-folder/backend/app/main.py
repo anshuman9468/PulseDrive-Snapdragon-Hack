@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, sensor, prediction, ask_ai, health, websocket
+from app.api import auth, sensor, prediction, ask_ai, health, websocket, dashboard
 from app.api import users
 
 app = FastAPI(
@@ -22,5 +22,7 @@ app.include_router(sensor.router, tags=["Sensor"])
 app.include_router(prediction.router, tags=["Prediction"])
 app.include_router(ask_ai.router, tags=["Ask AI"])
 app.include_router(health.router, tags=["Health"])
+app.include_router(dashboard.router, tags=["Dashboard"])
 app.include_router(users.router)
 app.include_router(websocket.router, tags=["WebSocket"])
+
