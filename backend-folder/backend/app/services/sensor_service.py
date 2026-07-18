@@ -1,4 +1,5 @@
-from typing import Any, Optional
+from datetime import datetime
+from typing import Any, Optional, Union
 
 from pymongo import DESCENDING
 from pymongo.collection import Collection
@@ -13,13 +14,24 @@ class SensorService:
     def __init__(self) -> None:
         self.collection: Collection = get_database()["sensor_data"]
 
-    def save_sensor_data(self, data: SensorData) -> dict[str, Any]:
+    def save_sensor_data(self, data: Union[SensorData, dict[str, Any]]) -> dict[str, Any]:
         """
         Persist a sensor reading to the sensor_data collection.
 
-        Converts the Pydantic model to a MongoDB-compatible document before insert.
+        Converts the Pydantic model or dict to a MongoDB-compatible document before insert.
         """
-        document = data.model_dump(mode="python")
+        if isinstance(data, dict):
+            # Generate timestamp if missing
+            if "timestamp" not in data or data["timestamp"] is None:
+                data["timestamp"] = datetime.utcnow()
+            # Validate against SensorData model to validate nested objects
+            validated_data = SensorData.model_validate(data)
+            document = validated_data.model_dump(mode="python")
+        else:
+            if data.timestamp is None:
+                data.timestamp = datetime.utcnow()
+            document = data.model_dump(mode="python")
+
         result = self.collection.insert_one(document)
         document["_id"] = str(result.inserted_id)
         return document
