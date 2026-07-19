@@ -32,7 +32,16 @@
 ![JWT](https://img.shields.io/badge/JWT%20Auth-000000?style=flat-square&logo=jsonwebtokens&logoColor=CE0E2D)
 
 </div>
+<div align="center">
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:CE0E2D,100:7A0000&height=4&width=1200" width="100%"/>
+</div>
 
+<div align="center">
+<img src="https://capsule-render.vercel.app/api?type=rounded&color=0:CE0E2D,100:7A0000&height=90&section=header&text=Demo%20Video&fontSize=34&fontColor=FFFFFF&fontAlignY=60&width=1200" width="100%"/>
+
+[![Watch the demo](https://img.shields.io/badge/▶%20WATCH%20DEMO-CE0E2D?style=for-the-badge&labelColor=000000)](https://drive.google.com/file/d/1ZgpC-3mUBnqxjNxovwh-o_ULIpidJMEM/view?usp=sharing)
+
+</div>
 <br>
 
 > PulseDrive is an end-to-end AI-driven predictive maintenance platform that continuously monitors vehicle health using multiple IoT sensors, Edge AI, Agentic AI orchestration, and Qualcomm AI acceleration. Unlike traditional diagnostic systems that only detect faults **after** they occur, PulseDrive continuously analyzes real-time sensor telemetry to **predict failures before they happen**, estimate **Remaining Useful Life (RUL)**, generate **AI-powered recommendations**, and **automatically schedule maintenance** — all designed to run locally on Qualcomm Snapdragon AI hardware.
