@@ -45,6 +45,7 @@ interface TelemetryState {
   accX: number; accY: number; accZ: number;
   gyroX: number; gyroY: number; gyroZ: number;
   execLog: { t: string; msg: string; ok: boolean | null }[];
+  healthHistory: { time: string; score: number }[];
 }
 
 const DEFAULT_TELEMETRY: TelemetryState = {
@@ -67,6 +68,7 @@ const DEFAULT_TELEMETRY: TelemetryState = {
   accX: 0, accY: 0, accZ: 0,
   gyroX: 0, gyroY: 0, gyroZ: 0,
   execLog: [],
+  healthHistory: [],
 };
 
 function useLiveTelemetry() {
@@ -107,28 +109,39 @@ function useLiveTelemetry() {
               ok: (msg.status ?? "").toLowerCase() === "healthy" ? true : null,
             });
 
-            setTel((prev) => ({
-              ...prev,
-              vehicleId: msg.vehicleId ?? prev.vehicleId,
-              healthScore: msg.healthScore ?? prev.healthScore,
-              status: msg.status ?? prev.status,
-              riskScore: msg.riskScore ?? prev.riskScore,
-              failureProbability: msg.failureProbability ?? prev.failureProbability,
-              riskTrend: msg.riskTrend ?? prev.riskTrend,
-              primaryFault: msg.primaryFault || prev.primaryFault,
-              secondaryFaults: msg.secondaryFaults ?? prev.secondaryFaults,
-              recommendation: msg.recommendation ?? prev.recommendation,
-              confidence: msg.confidence ?? prev.confidence,
-              agentResults: agents,
-              executionContext: (msg.executionContext ?? {}) as Record<string, unknown>,
-              timestamp: msg.timestamp ?? prev.timestamp,
-              execLog: [...logEntries, ...prev.execLog].slice(0, 20),
-            }));
+            setTel((prev) => {
+              const lastHistory = prev.healthHistory[prev.healthHistory.length - 1];
+              let newHistory = prev.healthHistory;
+              if (!lastHistory || lastHistory.time !== timeStr) {
+                newHistory = [...prev.healthHistory, { time: timeStr, score: msg.healthScore ?? prev.healthScore }];
+                if (newHistory.length > 24) {
+                  newHistory.shift();
+                }
+              }
+              return {
+                ...prev,
+                vehicleId: msg.vehicleId ?? prev.vehicleId,
+                healthScore: msg.healthScore ?? prev.healthScore,
+                status: msg.status ?? prev.status,
+                riskScore: msg.riskScore ?? prev.riskScore,
+                failureProbability: msg.failureProbability ?? prev.failureProbability,
+                riskTrend: msg.riskTrend ?? prev.riskTrend,
+                primaryFault: msg.primaryFault || prev.primaryFault,
+                secondaryFaults: msg.secondaryFaults ?? prev.secondaryFaults,
+                recommendation: msg.recommendation ?? prev.recommendation,
+                confidence: msg.confidence ?? prev.confidence,
+                agentResults: agents,
+                executionContext: (msg.executionContext ?? {}) as Record<string, unknown>,
+                timestamp: msg.timestamp ?? prev.timestamp,
+                execLog: [...logEntries, ...prev.execLog].slice(0, 20),
+                healthHistory: newHistory,
+              };
+            });
           }
 
           if (msg.type === "sensor_update") {
             const d = msg.data ?? msg;
-            const mpu = d.mpu6050 ?? {};
+            const mpu = d.mpu1 ?? d.mpu6050 ?? {};
             setTel((prev) => ({
               ...prev,
               temperature: d.temperature ?? prev.temperature,
@@ -330,43 +343,48 @@ function CircularGauge({ value, color }: { value: number; color: string }) {
 
 // ── Health Chart (pure SVG) ───────────────────────────────────────────────────
 
-function HealthChart() {
+function HealthChart({ history, vehicleId }: { history: { time: string; score: number }[]; vehicleId: string }) {
   const [hover, setHover] = useState<{ idx: number } | null>(null);
 
   const VW = 480, VH = 200;
   const PAD = { top: 12, right: 16, bottom: 28, left: 36 };
   const CW = VW - PAD.left - PAD.right;
   const CH = VH - PAD.top - PAD.bottom;
-  const MIN_Y = 60, MAX_Y = 100;
+  const MIN_Y = 0, MAX_Y = 100;
 
-  const xOf = (i: number) => (i / (HEALTH_DATA.length - 1)) * CW;
+  const data = history && history.length > 0 ? history : HEALTH_DATA;
+
+  const xOf = (i: number) => data.length <= 1 ? 0 : (i / (data.length - 1)) * CW;
   const yOf = (v: number) => CH - ((v - MIN_Y) / (MAX_Y - MIN_Y)) * CH;
 
-  const pts = HEALTH_DATA.map((d, i) => [xOf(i), yOf(d.score)] as [number, number]);
+  const pts = data.map((d, i) => [xOf(i), yOf(d.score)] as [number, number]);
   const linePath = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
-  const areaPath = `${linePath}L${xOf(HEALTH_DATA.length - 1).toFixed(2)},${CH}L0,${CH}Z`;
+  const areaPath = pts.length > 0 ? `${linePath}L${xOf(data.length - 1).toFixed(2)},${CH}L0,${CH}Z` : "";
   const thY = yOf(75);
-  const yTicks = [60, 70, 80, 90, 100];
-  const xLabels = HEALTH_DATA.filter((_, i) => i % 2 === 0);
+  const yTicks = [0, 25, 50, 75, 100];
 
   const onMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (data.length === 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const svgX = ((e.clientX - rect.left) / rect.width) * VW - PAD.left;
-    const idx = Math.round((svgX / CW) * (HEALTH_DATA.length - 1));
-    setHover({ idx: Math.max(0, Math.min(HEALTH_DATA.length - 1, idx)) });
+    const idx = Math.round((svgX / CW) * (data.length - 1));
+    setHover({ idx: Math.max(0, Math.min(data.length - 1, idx)) });
   };
 
-  const hd = hover !== null ? HEALTH_DATA[hover.idx] : null;
+  const hd = hover !== null && hover.idx < data.length ? data[hover.idx] : null;
   const hx = hover !== null ? xOf(hover.idx) : 0;
-  const hy = hover !== null ? yOf(HEALTH_DATA[hover.idx].score) : 0;
+  const hy = hover !== null && hd ? yOf(hd.score) : 0;
   const tipX = hover !== null ? (hx > CW / 2 ? hx - 88 : hx + 10) : 0;
+
+  const displayVehicle = vehicleId && vehicleId !== "--" ? vehicleId : "CNC-Mill-07";
+  const labelInterval = Math.max(1, Math.ceil(data.length / 6));
 
   return (
     <Card className="p-5 flex flex-col h-full">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-[13px] font-semibold text-slate-800">Health Trend</h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">Last 24 hours · CNC-Mill-07</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Live monitoring · {displayVehicle}</p>
         </div>
         <div className="flex items-center gap-4 text-[11px] text-slate-500">
           <div className="flex items-center gap-1.5">
@@ -385,15 +403,22 @@ function HealthChart() {
             {yTicks.map((v) => (
               <line key={v} x1={0} y1={yOf(v)} x2={CW} y2={yOf(v)} stroke="#f1f5f9" strokeWidth={1} />
             ))}
-            <path d={areaPath} fill="#2563EB" fillOpacity={0.08} />
+            {areaPath && <path d={areaPath} fill="#2563EB" fillOpacity={0.08} />}
             <line x1={0} y1={thY} x2={CW} y2={thY} stroke="#f87171" strokeWidth={1.5} strokeDasharray="5 3" />
-            <path d={linePath} fill="none" stroke="#2563EB" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+            {linePath && <path d={linePath} fill="none" stroke="#2563EB" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />}
             {yTicks.map((v) => (
               <text key={`y${v}`} x={-6} y={yOf(v) + 4} textAnchor="end" fontSize={10} fill="#94a3b8">{v}%</text>
             ))}
-            {xLabels.map((d, j) => (
-              <text key={d.time} x={xOf(j * 2)} y={CH + 18} textAnchor="middle" fontSize={10} fill="#94a3b8">{d.time}</text>
-            ))}
+            {data.map((d, i) => {
+              if (i % labelInterval === 0 || i === data.length - 1) {
+                return (
+                  <text key={`${d.time}-${i}`} x={xOf(i)} y={CH + 18} textAnchor="middle" fontSize={10} fill="#94a3b8">
+                    {d.time}
+                  </text>
+                );
+              }
+              return null;
+            })}
             {hover !== null && hd !== null && (
               <>
                 <line x1={hx} y1={0} x2={hx} y2={CH} stroke="#e2e8f0" strokeWidth={1} />
@@ -646,7 +671,7 @@ function DashboardPage({ tel }: { tel: TelemetryState }) {
 
       {/* Chart row */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-        <div className="lg:col-span-3" style={{ minHeight: 280 }}><HealthChart /></div>
+        <div className="lg:col-span-3" style={{ minHeight: 280 }}><HealthChart history={tel.healthHistory} vehicleId={tel.vehicleId} /></div>
         <div className="lg:col-span-2">
           <Card className="p-5 flex flex-col h-full">
             <div className="flex items-center justify-between mb-4">
@@ -1904,19 +1929,19 @@ export default function App() {
   const pages: Record<string, React.ReactNode> = {
     dashboard:   <DashboardPage tel={tel} />,
     monitoring:  <LiveMonitoringPage tel={tel} />,
-    diagnostics: <DiagnosticsPage />,
-    maintenance: <MaintenancePlannerPage />,
+    diagnostics: <DiagnosticsPage tel={tel} />,
+    maintenance: <MaintenancePlannerPage tel={tel} />,
     analytics:   <AnalyticsPage />,
     reports:     <ReportsPage />,
-    workflow:    <AIWorkflowPage />,
+    workflow:    <AIWorkflowPage tel={tel} />,
     settings:    <SettingsPage />,
   };
 
   return (
     <div className="flex h-screen bg-[#F8FAFC] overflow-hidden" style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif" }}>
-      <Sidebar active={activeNav} onSelect={setActiveNav} />
+      <Sidebar active={activeNav} onSelect={setActiveNav} tel={tel} />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <TopNav active={activeNav} />
+        <TopNav active={activeNav} tel={tel} />
         <main className="flex-1 overflow-y-auto p-6" style={{ scrollbarWidth: "thin", scrollbarColor: "#e2e8f0 transparent" }}>
           {pages[activeNav]}
           <div className="h-6" />

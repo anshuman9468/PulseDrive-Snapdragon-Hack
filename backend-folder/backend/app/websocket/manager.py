@@ -3,6 +3,8 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import WebSocket
 
+from fastapi.encoders import jsonable_encoder
+
 logger = logging.getLogger(__name__)
 
 
@@ -78,8 +80,9 @@ class ConnectionManager:
             Exception: If sending fails (connection may have closed)
         """
         try:
-            await websocket.send_json(message)
-            logger.debug(f"Personal message sent to client: {message}")
+            serializable_message = jsonable_encoder(message)
+            await websocket.send_json(serializable_message)
+            logger.debug(f"Personal message sent to client: {serializable_message}")
         except Exception as e:
             logger.error(f"Error sending personal message: {e}")
             self.disconnect(websocket)
@@ -105,10 +108,11 @@ class ConnectionManager:
         """
         # Create a list of connections to remove (disconnected ones)
         disconnected_clients = []
+        serializable_message = jsonable_encoder(message)
 
         for connection in self.active_connections:
             try:
-                await connection.send_json(message)
+                await connection.send_json(serializable_message)
             except Exception as e:
                 # Connection is no longer valid, mark for removal
                 logger.warning(f"Error broadcasting to client: {e}. Removing connection.")

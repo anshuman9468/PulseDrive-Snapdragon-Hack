@@ -33,10 +33,15 @@ class PredictionService:
             PredictionResponse with healthScore, status, confidence, recommendations, and agent details.
         """
         vehicle_id = request.vehicleId
-        features = request.features or {}
+        
+        # Convert Pydantic features to dictionary for the orchestrator
+        if request.features is not None:
+            features = request.features.model_dump(mode="python")
+        else:
+            features = {}
         
         # Add vehicle context to features dictionary if not present
-        if "vehicleId" not in features:
+        if "vehicleId" not in features or not features["vehicleId"]:
             features["vehicleId"] = vehicle_id
 
         # Retrieve previous risk score from MongoDB for trend calculation
@@ -138,4 +143,20 @@ class PredictionService:
         except Exception as e:
             logger.warning(f"Failed to stream prediction update via WebSocket: {e}")
 
+        # 4. Trigger Service Concierge agent asynchronously
+        try:
+            from service_concierge.container import container
+            alert_payload = {
+                "vehicleId": vehicle_id,
+                "risk_score": response.riskScore,
+                "decision": response.recommendation,
+                "severity": orchestrator_result.vehicle_status.upper(),
+                "fault": response.primaryFault or "Unknown Telematics Anomaly"
+            }
+            asyncio.create_task(container.alert_agent.evaluate_decision_engine_output(alert_payload))
+            logger.info(f"Triggered Service Concierge AlertAgent check for vehicle {vehicle_id}")
+        except Exception as e:
+            logger.error(f"Failed to trigger Service Concierge AlertAgent: {e}")
+
         return response
+

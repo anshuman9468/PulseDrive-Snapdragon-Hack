@@ -291,6 +291,44 @@ class TestAgenticPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.status, "warning")
         self.assertEqual(res.prediction, "imbalanced")
 
+    async def test_risk_assessment_agent(self):
+        from app.agents.risk_assessment_agent import RiskAssessmentAgent
+        from app.models.prediction_models import AgentPredictionResult
+        
+        agent = RiskAssessmentAgent()
+        self.assertEqual(agent.name(), "RiskAssessmentAgent")
+        self.assertFalse(agent.can_handle({}))
+        
+        # Test default predict method
+        pred_res = await agent.predict({})
+        self.assertEqual(pred_res.status, "safe")
+        
+        # Test assess with no results
+        assess_empty = agent.assess([])
+        self.assertEqual(assess_empty["risk_score"], 0.0)
+        self.assertEqual(assess_empty["failure_probability"], 0.0)
+        
+        # Test assess with normal safe results
+        safe_result = AgentPredictionResult(
+            agent="TempAgent", status="safe", confidence=1.0, severity=0.0,
+            reason="Normal", prediction="normal", execution_time_ms=0.0,
+            runtime_used="CPU", device_used="CPU"
+        )
+        assess_safe = agent.assess([safe_result], last_risk_score=10.0)
+        self.assertEqual(assess_safe["risk_score"], 0.0)
+        self.assertEqual(assess_safe["risk_trend"], "decreasing")
+        
+        # Test assess with anomaly
+        anomaly_result = AgentPredictionResult(
+            agent="TempAgent", status="critical", confidence=0.9, severity=75.0,
+            reason="High Temperature", prediction="critical", execution_time_ms=0.0,
+            runtime_used="CPU", device_used="CPU"
+        )
+        assess_anomaly = agent.assess([anomaly_result], last_risk_score=50.0)
+        self.assertEqual(assess_anomaly["risk_score"], 75.0)
+        self.assertEqual(assess_anomaly["risk_trend"], "increasing")
+        self.assertGreater(assess_anomaly["failure_probability"], 0.5)
+
 if __name__ == '__main__':
     unittest.main()
 
