@@ -14,10 +14,12 @@ class DashboardService:
         self.collection: Collection = get_database()["sensor_data"]
 
     def get_latest_dashboard(self) -> Optional[DashboardData]:
-        """Read the latest sensor document and build dashboard payload."""
+        """Read latest sensor document and generate dashboard dynamically."""
+
         document: dict[str, Any] | None = self.collection.find_one(
             sort=[("timestamp", DESCENDING)]
         )
+
         if document is None:
             return None
 
@@ -80,7 +82,7 @@ class DashboardService:
                 "latency": ai_latency,
                 "status": "Active",
             },
-            "connectivity": {
+            "connectivity": document.get("connectivity") or {
                 "esp32": True,
                 "websocket": True,
             },

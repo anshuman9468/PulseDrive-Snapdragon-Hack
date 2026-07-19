@@ -15,6 +15,9 @@ class Settings:
         self.ACCESS_TOKEN_EXPIRE_MINUTES = int(
             os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440")
         )
+        self.GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+        self.AI_MODEL = os.getenv("AI_MODEL")
+        self.GROQ_API_URL = os.getenv("GROQ_API_URL", "https://api.groq.com/v1")
 
 
 settings = Settings()
