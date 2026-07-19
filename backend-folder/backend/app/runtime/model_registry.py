@@ -68,13 +68,13 @@ class ModelRegistry:
 
     @classmethod
     def auto_register_models(cls) -> None:
-        """Scan models directory and auto-register ONNX files with optional JSON metadata."""
+        """Scan models directory and auto-register ONNX and TFLite files with optional JSON metadata."""
         # Ensure directory exists relative to current working directory
         if not os.path.exists(cls._models_dir):
             os.makedirs(cls._models_dir, exist_ok=True)
             
         for file in os.listdir(cls._models_dir):
-            if file.endswith(".onnx"):
+            if file.endswith(".onnx") or file.endswith(".tflite"):
                 model_name = os.path.splitext(file)[0]
                 model_path = os.path.join(cls._models_dir, file)
                 json_path = os.path.join(cls._models_dir, f"{model_name}.json")
@@ -100,12 +100,15 @@ class ModelRegistry:
                 
                 if metadata is None:
                     # Provide smart default metadata depending on the model name
+                    is_tflite = file.endswith(".tflite")
+                    default_backend = "LiteRT" if is_tflite else "ONNX Runtime"
                     if "gyro" in model_name:
                         metadata = ModelMetadata(
                             name=model_name,
                             version="1.0.0",
                             input_shape="[-1, 3]",
                             classes="Safe, Warning, Critical",
+                            execution_backend=default_backend,
                             target_device="CPU"
                         )
                     elif "vibration" in model_name:
@@ -114,10 +117,32 @@ class ModelRegistry:
                             version="1.0.0",
                             input_shape="[-1, 3]",
                             classes="Safe, Warning, Critical",
+                            execution_backend=default_backend,
+                            target_device="CPU"
+                        )
+                    elif "vehicle_state" in model_name:
+                        metadata = ModelMetadata(
+                            name=model_name,
+                            version="1.0.0",
+                            input_shape="[-1, 6]",
+                            classes="Normal, Friction Anomaly, Gyro Anomaly, Critical State",
+                            execution_backend=default_backend,
+                            target_device="CPU"
+                        )
+                    elif "wheel_imbalance" in model_name:
+                        metadata = ModelMetadata(
+                            name=model_name,
+                            version="1.0.0",
+                            input_shape="[-1, 3]",
+                            classes="Normal, Imbalanced",
+                            execution_backend=default_backend,
                             target_device="CPU"
                         )
                     else:
-                        metadata = ModelMetadata(name=model_name)
+                        metadata = ModelMetadata(
+                            name=model_name,
+                            execution_backend=default_backend
+                        )
                 
                 cls.register(model_name, model_path, metadata)
 

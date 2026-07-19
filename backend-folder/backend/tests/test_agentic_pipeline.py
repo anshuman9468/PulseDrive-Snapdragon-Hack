@@ -14,10 +14,13 @@ from app.agents.smoke_agent import SmokeAgent
 from app.agents.gyro_agent import GyroAgent
 from app.agents.brake_agent import BrakeAgent
 from app.agents.recommendation_agent import RecommendationAgent
+from app.agents.vehicle_state_agent import VehicleStateAgent
+from app.agents.wheel_imbalance_agent import WheelImbalanceAgent
 from app.orchestrator.planner import Planner
 from app.orchestrator.fusion_engine import FusionEngine
 from app.orchestrator.decision_engine import DecisionEngine
 from app.orchestrator.orchestrator import AgentOrchestrator
+
 
 class TestAgenticPipeline(unittest.IsolatedAsyncioTestCase):
 
@@ -150,7 +153,7 @@ class TestAgenticPipeline(unittest.IsolatedAsyncioTestCase):
         
         result = await orchestrator.execute(sensor_json)
         
-        self.assertEqual(result.vehicle_status, "Emergency")
+        self.assertEqual(result.vehicle_status, "EMERGENCY")
         self.assertLess(result.health_score, 20.0)
         self.assertGreater(result.risk_score, 80.0)
         self.assertTrue(len(result.agent_results) > 0)
@@ -163,10 +166,131 @@ class TestAgenticPipeline(unittest.IsolatedAsyncioTestCase):
         orchestrator = AgentOrchestrator()
         result = await orchestrator.execute({})
         
-        self.assertEqual(result.vehicle_status, "Safe")
+        self.assertEqual(result.vehicle_status, "SAFE")
         self.assertEqual(result.health_score, 100.0)
         self.assertEqual(result.risk_score, 0.0)
         self.assertEqual(len(result.agent_results), 0)
 
+    async def test_vehicle_state_agent(self):
+        agent = VehicleStateAgent()
+        self.assertEqual(agent.name(), "VehicleStateAgent")
+        self.assertTrue(agent.can_handle({"gyro": {}}))
+        self.assertTrue(agent.can_handle({"MPU2_Accel_X": 1000.0}))
+        
+        # Test real model execution (without mock) to verify it loads and runs
+        res = await agent.predict({
+            "MPU2_Accel_X": 4040.3,
+            "MPU2_Accel_Y": 597.7,
+            "MPU2_Accel_Z": 13862.4,
+            "MPU2_Gyro_X": 28.7,
+            "MPU2_Gyro_Y": -2.2,
+            "MPU2_Gyro_Z": -151.2
+        })
+        self.assertIn(res.status, ["safe", "warning", "critical", "emergency"])
+        self.assertEqual(res.runtime_used, "LiteRT Runtime")
+        self.assertEqual(res.device_used, "CPU")
+
+    @unittest.mock.patch('app.runtime.inference_engine.InferenceEngine.predict')
+    async def test_vehicle_state_agent_classification(self, mock_predict):
+        agent = VehicleStateAgent()
+        
+        # Class 0: Normal -> safe
+        mock_predict.return_value = {
+            "probabilities": [0.95, 0.02, 0.02, 0.01],
+            "runtime_used": "LiteRT Runtime",
+            "device_used": "CPU",
+            "execution_time_ms": 1.0
+        }
+        res = await agent.predict({"gyro": {}})
+        self.assertEqual(res.status, "safe")
+        self.assertEqual(res.prediction, "normal")
+
+        # Class 1: Friction Anomaly -> warning
+        mock_predict.return_value = {
+            "probabilities": [0.05, 0.85, 0.05, 0.05],
+            "runtime_used": "LiteRT Runtime",
+            "device_used": "CPU",
+            "execution_time_ms": 1.0
+        }
+        res = await agent.predict({"gyro": {}})
+        self.assertEqual(res.status, "warning")
+        self.assertEqual(res.prediction, "friction anomaly")
+
+        # Class 2: Gyro Anomaly -> critical
+        mock_predict.return_value = {
+            "probabilities": [0.05, 0.05, 0.85, 0.05],
+            "runtime_used": "LiteRT Runtime",
+            "device_used": "CPU",
+            "execution_time_ms": 1.0
+        }
+        res = await agent.predict({"gyro": {}})
+        self.assertEqual(res.status, "critical")
+        self.assertEqual(res.prediction, "gyro anomaly")
+
+        # Class 3: Critical State -> emergency
+        mock_predict.return_value = {
+            "probabilities": [0.01, 0.04, 0.05, 0.90],
+            "runtime_used": "LiteRT Runtime",
+            "device_used": "CPU",
+            "execution_time_ms": 1.0
+        }
+        res = await agent.predict({"gyro": {}})
+        self.assertEqual(res.status, "emergency")
+        self.assertEqual(res.prediction, "critical state")
+
+    async def test_wheel_imbalance_agent(self):
+        agent = WheelImbalanceAgent()
+        self.assertEqual(agent.name(), "WheelImbalanceAgent")
+        self.assertTrue(agent.can_handle({"gyro": {}}))
+        self.assertTrue(agent.can_handle({"MPU1_Gyro_X": 1000.0}))
+
+        # Test real model execution
+        res = await agent.predict({
+            "MPU1_Gyro_X": 1693.9,
+            "MPU1_Gyro_Y": 67.8,
+            "MPU1_Gyro_Z": -207.7
+        })
+        self.assertIn(res.status, ["safe", "warning", "critical", "emergency"])
+        self.assertEqual(res.runtime_used, "LiteRT Runtime")
+        self.assertEqual(res.device_used, "CPU")
+
+    @unittest.mock.patch('app.runtime.inference_engine.InferenceEngine.predict')
+    async def test_wheel_imbalance_agent_classification(self, mock_predict):
+        agent = WheelImbalanceAgent()
+
+        # Class 0: Normal -> safe
+        mock_predict.return_value = {
+            "probabilities": [0.95, 0.05],
+            "runtime_used": "LiteRT Runtime",
+            "device_used": "CPU",
+            "execution_time_ms": 1.0
+        }
+        res = await agent.predict({"gyro": {}})
+        self.assertEqual(res.status, "safe")
+        self.assertEqual(res.prediction, "normal")
+
+        # Class 1: Imbalanced (high prob) -> critical
+        mock_predict.return_value = {
+            "probabilities": [0.15, 0.85],
+            "runtime_used": "LiteRT Runtime",
+            "device_used": "CPU",
+            "execution_time_ms": 1.0
+        }
+        res = await agent.predict({"gyro": {}})
+        self.assertEqual(res.status, "critical")
+        self.assertEqual(res.prediction, "imbalanced")
+
+        # Class 1: Imbalanced (medium prob) -> warning
+        mock_predict.return_value = {
+            "probabilities": [0.35, 0.65],
+            "runtime_used": "LiteRT Runtime",
+            "device_used": "CPU",
+            "execution_time_ms": 1.0
+        }
+        res = await agent.predict({"gyro": {}})
+        self.assertEqual(res.status, "warning")
+        self.assertEqual(res.prediction, "imbalanced")
+
 if __name__ == '__main__':
     unittest.main()
+

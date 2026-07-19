@@ -45,6 +45,8 @@ class PredictionResponse(BaseModel):
     primaryFault: Optional[str] = Field(None, description="Dominant fault identified")
     secondaryFaults: Optional[List[str]] = Field(default_factory=list, description="Secondary faults identified")
     agentResults: Optional[List[Any]] = Field(default_factory=list, description="Detailed agent diagnostics")
+    executionContext: Optional[dict] = Field(None, description="Detailed execution context of the agentic run")
+
 
 
 class PredictionError(BaseModel):

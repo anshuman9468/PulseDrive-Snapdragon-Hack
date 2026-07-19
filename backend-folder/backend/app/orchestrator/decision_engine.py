@@ -29,13 +29,13 @@ class DecisionEngine:
 
         # Safety-first classification thresholds using Risk & Failure Probability
         if has_emergency_agent or risk_score >= 85.0 or failure_probability >= 0.90:
-            status = "Emergency"
+            status = "EMERGENCY"
         elif has_critical_agent or risk_score >= 60.0 or failure_probability >= 0.50:
-            status = "Critical"
+            status = "CRITICAL"
         elif risk_score >= 30.0 or failure_probability >= 0.15:
-            status = "Warning"
+            status = "WARNING"
         else:
-            status = "Safe"
+            status = "SAFE"
 
         logger.info(f"Decision Engine classified status as: {status} (Risk Score: {risk_score:.2f}, Fail Prob: {failure_probability:.3f})")
         return status

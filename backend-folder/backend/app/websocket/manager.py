@@ -141,3 +141,7 @@ class ConnectionManager:
             "active_connections": len(self.active_connections),
             "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
         }
+
+# Global connection manager instance
+manager = ConnectionManager()
+

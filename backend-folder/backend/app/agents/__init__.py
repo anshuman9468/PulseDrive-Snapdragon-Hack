@@ -6,6 +6,8 @@ from app.agents.gyro_agent import GyroAgent
 from app.agents.brake_agent import BrakeAgent
 from app.agents.recommendation_agent import RecommendationAgent
 from app.agents.risk_assessment_agent import RiskAssessmentAgent
+from app.agents.vehicle_state_agent import VehicleStateAgent
+from app.agents.wheel_imbalance_agent import WheelImbalanceAgent
 
 __all__ = [
     "BaseAgent",
@@ -15,5 +17,8 @@ __all__ = [
     "GyroAgent",
     "BrakeAgent",
     "RecommendationAgent",
-    "RiskAssessmentAgent"
+    "RiskAssessmentAgent",
+    "VehicleStateAgent",
+    "WheelImbalanceAgent"
 ]
+

@@ -25,24 +25,46 @@ class SmokeAgent(BaseAgent):
             gas_level = float(smoke_data.get("gas_level", 0.0))
             digital = int(smoke_data.get("digital", 0))
             
-            # Execute decoupled model prediction
-            inf_res = InferenceEngine.predict("smoke", [gas_level, float(digital)])
+            # Map digital input to model Active Low expected input
+            digital_model = 1.0 - float(digital)
+            gas_level_scaled = gas_level / 1000.0
             
-            # Heuristic rule-based fallback check
+            # Execute decoupled model prediction
+            inf_res = InferenceEngine.predict("smoke", [digital_model, gas_level_scaled])
+            probs = inf_res["probabilities"]
+            
+            # Class mapping: Index 0 is Anomaly, Index 1 is Normal
+            p_anomaly = probs[0]
+            p_normal = probs[1]
+            max_idx = 0 if p_anomaly > p_normal else 1
+            
+            # Heuristic rule-based fallback check for safety limits
             status, severity, reason = self.runtime.evaluate_smoke(gas_level, digital)
+            
+            prediction = "smoke or gas level anomaly" if status != "safe" else "safe"
+            confidence = float(p_anomaly) if status != "safe" else float(p_normal)
             
             return AgentPredictionResult(
                 agent=self.name(),
                 status=status,
-                confidence=self.confidence(),
+                confidence=round(confidence, 4),
                 severity=severity,
                 reason=reason,
-                prediction="smoke or gas level anomaly" if status != "safe" else "safe",
-                evidence={"gas_level": gas_level, "digital": digital},
+                prediction=prediction,
+                evidence={
+                    "gas_level": gas_level,
+                    "digital": digital,
+                    "model_features": [digital_model, gas_level_scaled]
+                },
                 execution_time_ms=inf_res["execution_time_ms"],
                 runtime_used=inf_res["runtime_used"],
                 device_used=inf_res["device_used"],
-                metadata={"gas_level": gas_level, "digital": digital}
+                metadata={
+                    "gas_level": gas_level,
+                    "digital": digital,
+                    "probabilities": probs,
+                    "max_index": max_idx
+                }
             )
         except Exception as e:
             logger.error(f"Error in {self.name()} execution: {e}")

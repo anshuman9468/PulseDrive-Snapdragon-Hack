@@ -24,16 +24,17 @@ from pydantic import ValidationError
 
 from app.models.sensor import SensorData
 from app.services.sensor_service import SensorService
-from app.websocket.manager import ConnectionManager
+from app.websocket.manager import manager
+from app.models.prediction import PredictionRequest
+from app.services.prediction_service import PredictionService
 
 logger = logging.getLogger(__name__)
 
-# Global connection manager instance
-# This maintains all active WebSocket connections across the application
-manager = ConnectionManager()
 sensor_service = SensorService()
+prediction_service = PredictionService()
 
 router = APIRouter(tags=["WebSocket"])
+
 
 
 @router.websocket("/ws/live")
@@ -122,11 +123,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     sensor_data,
                 )
             except Exception as save_error:
-                logger.error(
-                    f"Failed to persist sensor data: {save_error}",
-                    exc_info=True,
+                logger.warning(
+                    f"MongoDB save failed (non-critical, pipeline continues): {save_error}"
                 )
-                continue
+                # Do NOT continue — let the AI pipeline run even without DB persistence
 
             # Build the broadcast message with metadata
             broadcast_message = _build_broadcast_message(data)
@@ -139,6 +139,16 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             # Broadcast to all connected clients
             # This includes other ESP32s, web clients, mobile apps, etc.
             await manager.broadcast(broadcast_message)
+
+            # Trigger AI Prediction Pipeline asynchronously so it doesn't block the sensor stream
+            try:
+                pred_req = PredictionRequest(
+                    vehicleId=sensor_data.vehicleId,
+                    features=data
+                )
+                asyncio.create_task(prediction_service.predict(pred_req))
+            except Exception as pred_err:
+                logger.error(f"Failed to trigger AI prediction on websocket packet: {pred_err}")
 
     except WebSocketDisconnect:
         # Client disconnected gracefully or due to connection loss

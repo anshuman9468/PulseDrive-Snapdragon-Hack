@@ -64,7 +64,11 @@ class PredictionService:
             "Safe": "healthy",
             "Warning": "warning",
             "Critical": "critical",
-            "Emergency": "emergency"
+            "Emergency": "emergency",
+            "SAFE": "healthy",
+            "WARNING": "warning",
+            "CRITICAL": "critical",
+            "EMERGENCY": "emergency"
         }
         status_str = status_map.get(orchestrator_result.vehicle_status, "healthy")
         
@@ -92,7 +96,8 @@ class PredictionService:
             riskConfidence=orchestrator_result.risk_confidence,
             primaryFault=orchestrator_result.primary_fault,
             secondaryFaults=orchestrator_result.secondary_faults,
-            agentResults=[r.model_dump() for r in orchestrator_result.agent_results]
+            agentResults=[r.model_dump() for r in orchestrator_result.agent_results],
+            executionContext=orchestrator_result.execution_context
         )
 
         # 2. Persist prediction output to MongoDB
@@ -107,8 +112,7 @@ class PredictionService:
 
         # 3. Stream telemetry and final decision through WebSocket
         try:
-            # Local import to avoid any potential circular dependencies at module level
-            from app.api.websocket import manager
+            from app.websocket.manager import manager
             
             # Broadcast message structure representing the new analysis
             broadcast_payload = {
@@ -124,6 +128,7 @@ class PredictionService:
                 "secondaryFaults": response.secondaryFaults,
                 "recommendation": response.recommendation,
                 "agentResults": response.agentResults,
+                "executionContext": response.executionContext,
                 "timestamp": response.timestamp.isoformat()
             }
             

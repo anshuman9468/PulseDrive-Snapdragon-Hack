@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 class AgentPredictionResult(BaseModel):
     agent: str = Field(..., description="Name of the reporting agent")
@@ -25,3 +25,5 @@ class DecisionEngineResult(BaseModel):
     secondary_faults: List[str] = Field(default_factory=list, description="Secondary faults identified")
     recommendations: List[str] = Field(default_factory=list, description="Actionable recommendations")
     agent_results: List[AgentPredictionResult] = Field(default_factory=list, description="Raw results from individual agents")
+    execution_context: Optional[Dict[str, Any]] = Field(default=None, description="Pipeline execution graph and telemetry context")
+

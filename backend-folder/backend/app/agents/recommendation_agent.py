@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from app.agents.base_agent import BaseAgent
 from app.models.prediction_models import AgentPredictionResult
 
@@ -15,7 +15,7 @@ class RecommendationAgent(BaseAgent):
         # Recommendation agent is general and can process any sensor JSON that contains any standard parameters
         return any(k in sensor_json for k in ["temperature", "battery_voltage", "smoke", "gyro", "brake"])
 
-    async def predict(self, sensor_json: Dict[str, Any]) -> AgentPredictionResult:
+    async def predict(self, sensor_json: Dict[str, Any], decision: Optional[str] = None) -> AgentPredictionResult:
         try:
             recs = []
             status = "safe"
@@ -92,6 +92,16 @@ class RecommendationAgent(BaseAgent):
             if not recs:
                 recs.append("All vehicle systems operating within nominal ranges. No action required.")
 
+            if decision:
+                status = decision.lower()
+                status_severity_map = {
+                    "safe": 0.0,
+                    "warning": 30.0,
+                    "critical": 60.0,
+                    "emergency": 90.0
+                }
+                severity = max(severity, status_severity_map.get(status, 0.0))
+
             reason = f"Generated {len(recs)} recommendation(s) based on live telemetry."
             
             return AgentPredictionResult(
@@ -104,9 +114,10 @@ class RecommendationAgent(BaseAgent):
             )
         except Exception as e:
             logger.error(f"Error in {self.name()} execution: {e}")
+            final_status = decision.lower() if decision else "safe"
             return AgentPredictionResult(
                 agent=self.name(),
-                status="safe",
+                status=final_status,
                 confidence=0.0,
                 severity=0.0,
                 reason=f"Prediction error: {str(e)}",
