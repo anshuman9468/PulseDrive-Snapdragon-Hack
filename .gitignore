@@ -86,3 +86,22 @@ Thumbs.db
 # Misc
 *.bak
 *.tmp
+
+# Node.js / Frontend
+node_modules/
+.npm
+.eslintcache
+.vite/
+dist/
+build/
+.cache/
+.next/
+out/
+
+# Archives
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+
+

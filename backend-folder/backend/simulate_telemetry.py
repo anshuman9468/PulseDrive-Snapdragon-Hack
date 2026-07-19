@@ -12,7 +12,7 @@ WS_URL = "ws://localhost:8000/ws/live"
 # Setup different scenarios
 SCENARIOS = {
     "1": {
-        "name": "Normal (Healthy State)",
+        "name": "CNC-Mill-07 (Normal / Healthy State)",
         "temperature": lambda: random.uniform(65.0, 72.0),
         "voltage": lambda: random.uniform(12.8, 13.8),
         "gas_value": lambda: random.uniform(10.0, 45.0),
@@ -24,7 +24,7 @@ SCENARIOS = {
         "gz": lambda: random.uniform(-1.0, 1.0),
     },
     "2": {
-        "name": "High Temperature Warning",
+        "name": "CNC-Mill-07 (High Temperature Warning)",
         "temperature": lambda: random.uniform(85.0, 95.0),
         "voltage": lambda: random.uniform(12.5, 13.2),
         "gas_value": lambda: random.uniform(15.0, 50.0),
@@ -36,7 +36,7 @@ SCENARIOS = {
         "gz": lambda: random.uniform(-1.0, 1.0),
     },
     "3": {
-        "name": "Battery Voltage Degradation",
+        "name": "Lathe-03 (Battery Voltage Degradation)",
         "temperature": lambda: random.uniform(70.0, 75.0),
         "voltage": lambda: random.uniform(9.5, 10.8),
         "gas_value": lambda: random.uniform(10.0, 40.0),
@@ -48,7 +48,7 @@ SCENARIOS = {
         "gz": lambda: random.uniform(-1.0, 1.0),
     },
     "4": {
-        "name": "Smoke/Gas Leak Emergency",
+        "name": "Robot-02 (Smoke / Gas Leak Emergency)",
         "temperature": lambda: random.uniform(95.0, 115.0),
         "voltage": lambda: random.uniform(12.0, 13.0),
         "gas_value": lambda: random.uniform(400.0, 850.0),
@@ -60,7 +60,7 @@ SCENARIOS = {
         "gz": lambda: random.uniform(-1.0, 1.0),
     },
     "5": {
-        "name": "Severe Vibration / Wheel Imbalance",
+        "name": "Conv-09 (Severe Vibration / Wheel Imbalance)",
         "temperature": lambda: random.uniform(68.0, 74.0),
         "voltage": lambda: random.uniform(12.8, 13.5),
         "gas_value": lambda: random.uniform(10.0, 35.0),

@@ -1,0 +1,84 @@
+/* ============================================================
+   PULSEDRIVE — DARK THEME GLOBAL OVERRIDES
+   ============================================================ */
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(99, 179, 237, 0.18); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(99, 179, 237, 0.35); }
+
+/* Smooth transitions globally */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color, box-shadow, opacity;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
+}
+
+/* Glow pulse for critical alerts */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 6px 0 rgba(239, 68, 68, 0.4); }
+  50%       { box-shadow: 0 0 18px 4px rgba(239, 68, 68, 0.7); }
+}
+.glow-critical { animation: glow-pulse 1.8s ease-in-out infinite; }
+
+/* Glow pulse for warning */
+@keyframes glow-warn {
+  0%, 100% { box-shadow: 0 0 6px 0 rgba(251, 191, 36, 0.3); }
+  50%       { box-shadow: 0 0 16px 4px rgba(251, 191, 36, 0.55); }
+}
+.glow-warn { animation: glow-warn 2s ease-in-out infinite; }
+
+/* Gradient text utility */
+.grad-text {
+  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Card shimmer on hover */
+.pd-card {
+  background: linear-gradient(135deg, rgba(15, 23, 60, 0.9) 0%, rgba(10, 18, 45, 0.95) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+  transition: border-color 200ms, box-shadow 200ms;
+}
+.pd-card:hover {
+  border-color: rgba(59, 130, 246, 0.28);
+  box-shadow: 0 4px 24px rgba(59, 130, 246, 0.08);
+}
+
+/* Sidebar nav active glow */
+.nav-active {
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.2) 0%, rgba(59, 130, 246, 0.06) 100%);
+  border-left: 2px solid #3b82f6;
+}
+
+/* Live dot pulse */
+@keyframes live-ping {
+  0%   { transform: scale(1);   opacity: 1; }
+  75%  { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+.live-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: inherit;
+  animation: live-ping 1.4s cubic-bezier(0,0,0.2,1) infinite;
+}
+
+/* Health bar gradient */
+.health-bar-healthy { background: linear-gradient(90deg, #10b981, #34d399); }
+.health-bar-warning { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.health-bar-critical { background: linear-gradient(90deg, #ef4444, #f87171); }
+
+/* Metric card accent top border */
+.metric-card-blue   { border-top: 2px solid rgba(59,  130, 246, 0.6); }
+.metric-card-green  { border-top: 2px solid rgba(16,  185, 129, 0.6); }
+.metric-card-amber  { border-top: 2px solid rgba(245, 158,  11, 0.6); }
+.metric-card-red    { border-top: 2px solid rgba(239,  68,  68, 0.6); }
+.metric-card-purple { border-top: 2px solid rgba(139,  92, 246, 0.6); }

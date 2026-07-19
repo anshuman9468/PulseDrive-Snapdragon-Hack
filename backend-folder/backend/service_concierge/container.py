@@ -10,6 +10,7 @@ from service_concierge.services.booking_service import BookingService
 from service_concierge.agents.conversation_agent import ConversationAgent
 from service_concierge.agents.alert_agent import AlertAgent
 from service_concierge.services.voice_service import VoiceService
+from service_concierge.services.outbound_call_service import OutboundCallService
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,9 @@ class ServiceConciergeContainer:
         )
         
         self.twilio_service = TwilioService()
+        self.outbound_call_service = OutboundCallService()
         self.sarvam_service = SarvamService()
+
         
         self.notification_service = NotificationService(
             twilio_service=self.twilio_service

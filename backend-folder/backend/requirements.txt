@@ -42,4 +42,5 @@ python-multipart==0.0.32
 
 # Sarvam AI Python SDK
 sarvamai>=0.1.28
+twilio>=9.0.0
 

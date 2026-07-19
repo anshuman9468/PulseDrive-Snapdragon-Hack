@@ -1,4 +1,5 @@
 import logging
+import urllib.parse
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Depends, Query, Form, Response
 from pydantic import BaseModel, Field
@@ -37,6 +38,10 @@ class CallTriggerRequest(BaseModel):
     vehicle_id: str
     phone_number: str
     webhook_host: str = Field(default="http://localhost:8000")
+
+class StartCallRequest(BaseModel):
+    vehicle_id: str
+    phone_number: str
 
 @router.post("/booking/recommend", response_model=Dict[str, Any])
 async def recommend_booking(req: RecommendRequest):
@@ -134,10 +139,48 @@ async def get_nearby_centers(lat: float = Query(...), lng: float = Query(...)):
 
 # --- TWILIO VOICE INTEGRATION ENDPOINTS ---
 
+def get_outbound_call_service():
+    return container.outbound_call_service
+
+@router.post("/voice/start-call", response_model=Dict[str, Any])
+async def start_voice_call_endpoint(
+    req: StartCallRequest,
+    outbound_call_service=Depends(get_outbound_call_service)
+):
+    """Initiates an outbound phone call integration using Twilio."""
+    import re
+    # Validate phone number format (E.164)
+    if not req.phone_number or not re.match(r"^\+[1-9]\d{1,14}$", req.phone_number):
+        logger.error(f"Validation failed: Invalid phone number format {req.phone_number}")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid phone number format. Must be E.164 format (e.g. +91XXXXXXXXXX)."
+        )
+
+    result = await outbound_call_service.start_call(
+        phone_number=req.phone_number,
+        vehicle_id=req.vehicle_id
+    )
+
+    if not result.get("success"):
+        logger.error(f"Failed to start call: {result.get('error')}")
+        raise HTTPException(
+            status_code=500,
+            detail=result.get("error", "Twilio failed to trigger outbound call")
+        )
+
+    return {
+        "status": "success",
+        "call_sid": result["call_sid"],
+        "phone_number": result["phone_number"]
+    }
+
 @router.post("/voice/call", response_model=Dict[str, Any])
 async def trigger_voice_call(req: CallTriggerRequest):
     """Start an interactive outbound telematics concierge call to driver."""
-    webhook_url = f"{req.webhook_host}/api/service/voice/twiml?vehicle_id={req.vehicle_id}&phone_number={req.phone_number}"
+    encoded_vehicle_id = urllib.parse.quote(req.vehicle_id)
+    encoded_phone_number = urllib.parse.quote(req.phone_number)
+    webhook_url = f"{req.webhook_host}/api/service/voice/twiml?vehicle_id={encoded_vehicle_id}&phone_number={encoded_phone_number}"
     call_sid = await container.twilio_service.initiate_call(req.phone_number, webhook_url)
     if not call_sid:
         raise HTTPException(status_code=500, detail="Twilio failed to trigger outbound call")
@@ -154,7 +197,9 @@ async def twilio_twiml_start(
 ):
     """TwiML XML builder responding to initial call pick-up event."""
     # Webhook URL for gathering input
-    gather_url = f"/api/service/voice/twiml/gather?vehicle_id={vehicle_id}&phone_number={phone_number}"
+    encoded_vehicle_id = urllib.parse.quote(vehicle_id)
+    encoded_phone_number = urllib.parse.quote(phone_number)
+    gather_url = f"/api/service/voice/twiml/gather?vehicle_id={encoded_vehicle_id}&phone_number={encoded_phone_number}"
     twiml_xml = await container.voice_service.handle_call_start(
         vehicle_id=vehicle_id,
         phone_number=phone_number,
@@ -172,7 +217,9 @@ async def twilio_twiml_gather(
     """Twilio Speech-to-Text webhook callback turn processing."""
     # Lookup active conversation
     conv = await container.voice_service.conversation_agent.get_or_create_conversation(vehicle_id, phone_number)
-    gather_url = f"/api/service/voice/twiml/gather?vehicle_id={vehicle_id}&phone_number={phone_number}"
+    encoded_vehicle_id = urllib.parse.quote(vehicle_id)
+    encoded_phone_number = urllib.parse.quote(phone_number)
+    gather_url = f"/api/service/voice/twiml/gather?vehicle_id={encoded_vehicle_id}&phone_number={encoded_phone_number}"
     
     transcript = SpeechResult or ""
     twiml_xml = await container.voice_service.handle_speech_input(
