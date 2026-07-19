@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pulse Drive • High-Speed 50Hz BLE Telemetry</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #04060a;
+            --card-bg: rgba(11, 15, 27, 0.85);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.4);
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.4);
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.4);
+            --ble-color: #00d2ff;
+            --ble-glow: rgba(0, 210, 255, 0.4);
+            --warning: #f59e0b;
+            --temp-color: #ff7b00;
+            --text-color: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 10% 20%, rgba(0, 210, 255, 0.15) 0px, transparent 50%),
+                radial-gradient(at 90% 80%, rgba(59, 130, 246, 0.12) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 40px;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(4, 6, 10, 0.95);
+            backdrop-filter: blur(12px);
+            z-index: 100;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 24px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #00d2ff, #3b82f6, #10b981);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo i {
+            -webkit-text-fill-color: initial;
+            color: #00d2ff;
+            filter: drop-shadow(0 0 8px var(--ble-glow));
+        }
+
+        .connection-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: var(--danger);
+            box-shadow: 0 0 10px var(--danger-glow);
+            transition: all 0.3s ease;
+        }
+
+        .status-dot.connected {
+            background-color: var(--success);
+            box-shadow: 0 0 10px var(--success-glow);
+        }
+
+        .status-text {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-ble {
+            background: linear-gradient(135deg, #00d2ff, #3b82f6);
+            border: none;
+            color: #04060a;
+            box-shadow: 0 4px 16px var(--ble-glow);
+        }
+
+        .btn-ble:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px var(--ble-glow);
+        }
+
+        .dashboard {
+            max-width: 1400px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 30px 40px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 25px;
+            flex-grow: 1;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 24px;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, #00d2ff, #3b82f6, #10b981);
+        }
+
+        .card-title {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .metric-value {
+            font-size: 38px;
+            font-weight: 800;
+            color: #ffffff;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: baseline;
+            gap: 5px;
+        }
+
+        .metric-unit {
+            font-size: 16px;
+            font-weight: 400;
+            color: var(--text-muted);
+        }
+
+        .span-3 { grid-column: span 3; }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .info-item {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px;
+            text-align: center;
+        }
+
+        .info-label {
+            font-size: 9px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .info-value {
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        /* 3D Car Simulator */
+        .sim-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 110px;
+            position: relative;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            border: 1px dashed var(--border-color);
+            margin-top: 10px;
+        }
+
+        .car-sim {
+            width: 100px;
+            height: 35px;
+            position: relative;
+            transition: transform 0.05s linear;
+            transform-origin: center center;
+            color: var(--ble-color);
+        }
+
+        .car-sim svg {
+            width: 100%;
+            height: 100%;
+            fill: currentColor;
+            filter: drop-shadow(0 4px 8px var(--ble-glow));
+        }
+
+        /* Gas Sentinel */
+        .gas-bar-container {
+            width: 100%;
+            height: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .gas-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--success), var(--warning), var(--danger));
+            transition: width 0.05s linear;
+        }
+
+        /* Raw JSON Console */
+        .json-console {
+            background: #020305;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 14px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            color: #00ffaa;
+            height: 120px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            width: 100%;
+            height: 250px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 15px;
+            font-size: 12px;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border-color);
+            background: rgba(4, 6, 10, 0.5);
+            margin-top: auto;
+        }
+
+        /* Vehicle Condition/Health Badge Styles */
+        .health-badge {
+            font-size: 11px;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+        }
+        .status-healthy-bg {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            text-shadow: 0 0 5px rgba(16, 185, 129, 0.5);
+        }
+        .status-normal-bg {
+            background: rgba(0, 210, 255, 0.15);
+            color: var(--ble-color);
+            border: 1px solid rgba(0, 210, 255, 0.3);
+            text-shadow: 0 0 5px rgba(0, 210, 255, 0.5);
+        }
+        .status-bad-bg {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--warning);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            text-shadow: 0 0 5px rgba(245, 158, 11, 0.5);
+            animation: pulse-warn 1.5s infinite alternate;
+        }
+        .status-critical-bg {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            text-shadow: 0 0 5px rgba(239, 68, 68, 0.6);
+            animation: flash-danger 1s infinite alternate;
+        }
+
+        /* AI Predictive Decision Component Styles */
+        .ai-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 12px;
+            margin-bottom: 12px;
+        }
+
+        .ai-box {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 14px 10px;
+            text-align: center;
+            transition: all 0.2s ease-in-out;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ai-box:hover {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .ai-box-header {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .ai-class-status {
+            font-size: 18px;
+            font-weight: 800;
+            margin: 6px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-good {
+            color: var(--success);
+            text-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+        }
+
+        .status-warning {
+            color: var(--warning);
+            text-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+            animation: pulse-warn 1.5s infinite alternate;
+        }
+
+        .status-danger {
+            color: var(--danger);
+            text-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+            animation: flash-danger 1s infinite alternate;
+        }
+
+        @keyframes pulse-warn {
+            from { opacity: 0.8; }
+            to { opacity: 1; }
+        }
+
+        @keyframes flash-danger {
+            from { opacity: 0.6; text-shadow: 0 0 5px rgba(239, 68, 68, 0.2); }
+            to { opacity: 1; text-shadow: 0 0 15px rgba(239, 68, 68, 0.8); }
+        }
+
+        .ai-class-desc {
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .orchestrator-logs-header {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            margin-top: 15px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 6px;
+            text-transform: uppercase;
+        }
+
+        .orchestrator-console {
+            background: #020305;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            color: #38bdf8;
+            height: 95px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">
+            <i class="fa-brands fa-bluetooth-b"></i>
+            Pulse Drive • High-Speed 50Hz BLE Telemetry
+        </div>
+        <div class="connection-controls">
+            <div id="statusDot" class="status-dot"></div>
+            <div id="statusText" class="status-text">Disconnected (Click Pair to Connect)</div>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: #a0aec0; cursor: pointer; user-select: none;">
+                <input type="checkbox" id="scanAllCheckbox" style="accent-color: var(--ble-color);">
+                Scan All
+            </label>
+            <button class="btn btn-ble" onclick="connectBluetooth()">
+                <i class="fa-brands fa-bluetooth-b"></i> Pair Bluetooth Device
+            </button>
+        </div>
+    </header>
+
+    <main class="dashboard">
+
+        <!-- MPU #1 (Wheel Imbalance Model) -->
+        <div class="card">
+            <div class="card-title">
+                MPU #1 (Wheel Imbalance Gyro)
+                <i class="fa-solid fa-sync" style="color: var(--ble-color)"></i>
+            </div>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Gyro X</div>
+                    <div id="gx1Val" class="info-value">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Gyro Y</div>
+                    <div id="gy1Val" class="info-value">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Gyro Z</div>
+                    <div id="gz1Val" class="info-value">0</div>
+                </div>
+            </div>
+            <div style="font-size: 11px; text-align: center; color: var(--success); margin-top: 25px;">
+                50Hz High-Speed Stream
+            </div>
+        </div>
+
+        <!-- MPU #2 (Vehicle Condition Model) -->
+        <div class="card">
+            <div class="card-title">
+                MPU #2 (Vehicle Motion & Pitch)
+                <i class="fa-solid fa-mountain" style="color: var(--primary)"></i>
+            </div>
+            <div class="info-grid" style="margin-bottom: 8px;">
+                <div class="info-item">
+                    <div class="info-label">Accel X</div>
+                    <div id="ax2Val" class="info-value">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Accel Y</div>
+                    <div id="ay2Val" class="info-value">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Accel Z</div>
+                    <div id="az2Val" class="info-value">0</div>
+                </div>
+            </div>
+            <div class="info-grid" style="margin-bottom: 10px;">
+                <div class="info-item">
+                    <div class="info-label">Gyro X</div>
+                    <div id="gx2Val" class="info-value">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Gyro Y</div>
+                    <div id="gy2Val" class="info-value">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Gyro Z</div>
+                    <div id="gz2Val" class="info-value">0</div>
+                </div>
+            </div>
+
+            <div class="sim-container">
+                <div id="carSim" class="car-sim">
+                    <svg viewBox="0 0 100 50">
+                        <path d="M15 35 Q15 30 18 28 L30 25 L45 15 L70 15 L80 25 L88 28 Q92 30 92 35 L88 38 L12 38 Z" />
+                        <circle cx="28" cy="38" r="7" fill="#0b0f1b" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="72" cy="38" r="7" fill="#0b0f1b" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- HS3003 Temp & MQ Smoke -->
+        <div class="card">
+            <div class="card-title">
+                Environment (Temp & Smoke)
+                <i class="fa-solid fa-temperature-half" style="color: var(--temp-color)"></i>
+            </div>
+            <div class="metric-value">
+                <span id="tempVal">--.-</span><span class="metric-unit">°C</span>
+            </div>
+            
+            <div class="info-grid" style="margin-top: 10px; margin-bottom: 8px;">
+                <div class="info-item" style="grid-column: span 3;">
+                    <div class="info-label">Smoke Sensor Value</div>
+                    <div style="font-size: 16px; font-weight: 800;"><span id="smokeVal">0</span> / 1023</div>
+                </div>
+            </div>
+            <div class="gas-bar-container">
+                <div id="gasBar" class="gas-bar"></div>
+            </div>
+        </div>
+
+        <!-- AI Predictive Decision & Agentic Orchestration -->
+        <div class="card span-3">
+            <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <span>AI Predictive Decision & Agentic Orchestration</span>
+                    <span id="vehicleHealthBadge" class="health-badge status-healthy-bg">Healthy Condition</span>
+                </div>
+                <i class="fa-solid fa-brain" style="color: var(--primary)"></i>
+            </div>
+            <div class="ai-grid">
+                <!-- Vehicle State Model -->
+                <div class="ai-box">
+                    <div class="ai-box-header">
+                        <i class="fa-solid fa-car"></i>
+                        <span>VEHICLE STATE MODEL</span>
+                    </div>
+                    <div class="ai-class-status status-good" id="vehicleStateVal">STATIONARY</div>
+                    <div class="ai-class-desc" id="vehicleStateClass">Classification: Class 0</div>
+                </div>
+
+                <!-- Wheel Imbalance Model -->
+                <div class="ai-box">
+                    <div class="ai-box-header">
+                        <i class="fa-solid fa-circle-notch"></i>
+                        <span>WHEEL IMBALANCE MODEL</span>
+                    </div>
+                    <div class="ai-class-status status-good" id="wheelImbalanceVal">BALANCED</div>
+                    <div class="ai-class-desc" id="wheelImbalanceClass">Classification: Class 0</div>
+                </div>
+
+                <!-- Smoke Detection Model -->
+                <div class="ai-box">
+                    <div class="ai-box-header">
+                        <i class="fa-solid fa-smog"></i>
+                        <span>SMOKE DETECTION MODEL</span>
+                    </div>
+                    <div class="ai-class-status status-good" id="smokeHazardVal">NORMAL</div>
+                    <div class="ai-class-desc" id="smokeHazardClass">Classification: Class 0</div>
+                </div>
+            </div>
+
+            <!-- Agentic Orchestration Logs -->
+            <div class="orchestrator-logs-header">
+                <i class="fa-solid fa-network-wired"></i> ACTIVE AGENT ORCHESTRATION EVENT STREAM
+            </div>
+            <div id="orchestratorLogs" class="orchestrator-console">[SYSTEM] Agentic Orchestration Engine initialized. Listening to 50Hz sensor stream...</div>
+        </div>
+
+        <!-- Live Raw JSON Stream Console -->
+        <div class="card span-3">
+            <div class="card-title">
+                Live High-Speed 50Hz JSON Stream Output
+                <i class="fa-solid fa-code" style="color: var(--success)"></i>
+            </div>
+            <div id="rawJsonOutput" class="json-console">
+Waiting for Bluetooth BLE connection... Click [Pair Bluetooth Device] above to scan and pair with PULSE_DRIVE_BLE.
+            </div>
+        </div>
+
+        <!-- Master Telemetry Chart Plot -->
+        <div class="card span-3">
+            <div class="card-title">
+                Real-Time 50Hz Telemetry Plot
+                <i class="fa-solid fa-chart-line" style="color: var(--primary)"></i>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="masterChart"></canvas>
+            </div>
+        </div>
+
+    </main>
+
+    <footer>
+        Pulse Drive • Accelerated 50Hz Bluetooth BLE Sensor Telemetry
+    </footer>
+
+    <script>
+        let dataIndex = 0;
+
+        // Chart Initialization
+        const ctx = document.getElementById('masterChart').getContext('2d');
+        const chartData = {
+            labels: [],
+            datasets: [
+                {
+                    label: 'MPU1 Gyro X',
+                    borderColor: '#00d2ff',
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    data: [],
+                    pointRadius: 0,
+                    yAxisID: 'yMotion',
+                    tension: 0.2
+                },
+                {
+                    label: 'Temperature (°C)',
+                    borderColor: '#ff7b00',
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    data: [],
+                    pointRadius: 0,
+                    yAxisID: 'yTemp',
+                    tension: 0.2
+                },
+                {
+                    label: 'Smoke Level',
+                    borderColor: '#ef4444',
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    data: [],
+                    pointRadius: 0,
+                    yAxisID: 'ySmoke',
+                    tension: 0.2
+                }
+            ]
+        };
+
+        const masterChart = new Chart(ctx, {
+            type: 'line',
+            data: chartData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: {
+                    x: { ticks: { display: false } },
+                    yMotion: { type: 'linear', display: true, position: 'left', ticks: { color: '#00d2ff' } },
+                    yTemp: { type: 'linear', display: true, position: 'right', ticks: { color: '#ff7b00' } },
+                    ySmoke: { type: 'linear', display: true, position: 'right', ticks: { color: '#ef4444' }, min: 0, max: 1023 }
+                },
+                plugins: { legend: { labels: { color: '#f3f4f6' } } }
+            }
+        });
+
+        let isBluetoothConnected = false;
+
+        // Model classification state tracking variables
+        let prevVehicleState = -1;
+        let prevWheelImbalance = -1;
+        let prevSmokeHazard = -1;
+        let recentOrchestrations = [];
+
+        function logAgenticOrchestration(message) {
+            const logs = document.getElementById('orchestratorLogs');
+            if (logs) {
+                const timestamp = new Date().toLocaleTimeString();
+                logs.innerHTML += `\n[${timestamp}] ${message}`;
+                logs.scrollTop = logs.scrollHeight;
+            }
+        }
+
+        // Display Linux Web Bluetooth setup guide in the JSON output console if Bluetooth is unavailable
+        window.addEventListener('DOMContentLoaded', () => {
+            if (!navigator.bluetooth) {
+                showBluetoothEnablementGuide();
+            }
+        });
+
+        function showBluetoothEnablementGuide() {
+            const isLinux = navigator.userAgent.toLowerCase().includes('linux');
+            let guide = `[ERROR] Web Bluetooth is currently disabled or unsupported in this browser.\n\n`;
+            if (isLinux) {
+                guide += `To enable Web Bluetooth on Linux Google Chrome / Chromium:\n`;
+                guide += `1. Open a new tab in Chrome and go to:\n`;
+                guide += `   chrome://flags/#enable-experimental-web-platform-features\n`;
+                guide += `2. Change the dropdown setting to "Enabled".\n`;
+                guide += `3. Click the "Relaunch" button at the bottom right to restart the browser.\n`;
+                guide += `4. If Chrome was installed via Snap, run this command in your terminal to grant Bluetooth access:\n`;
+                guide += `   sudo snap connect google-chrome:bluez\n`;
+                guide += `5. Ensure your system Bluetooth service is active:\n`;
+                guide += `   sudo systemctl restart bluetooth\n\n`;
+            } else {
+                guide += `Please ensure you are using a Chromium-based browser (Chrome, Edge, Opera).\n\n`;
+            }
+            guide += `⚠️ IMPORTANT (demoing on another computer / IP address):\n`;
+            guide += `Web Bluetooth requires a SECURE ORIGIN (localhost, 127.0.0.1, or HTTPS).\n`;
+            guide += `If you are accessing this dashboard from another computer using an IP address (e.g. http://192.168.x.x:8080/dashboard.html):\n`;
+            guide += `1. Open Chrome on the client machine and go to:\n`;
+            guide += `   chrome://flags/#unsafely-treat-insecure-origin-as-secure\n`;
+            guide += `2. Enter this dashboard's IP and port (e.g., http://192.168.x.x:8080) in the input field.\n`;
+            guide += `3. Change the setting to "Enabled".\n`;
+            guide += `4. Click "Relaunch" at the bottom to apply changes. Bluetooth will then be unlocked!\n`;
+            
+            document.getElementById('rawJsonOutput').innerText = guide;
+        }
+
+        // Web Bluetooth BLE Connection Logic
+        let activeBleDevice = null;
+        async function connectBluetooth() {
+            try {
+                if (!navigator.bluetooth) {
+                    showBluetoothEnablementGuide();
+                    throw new Error("Web Bluetooth is not supported/enabled in this browser. Please see the setup guide in the console below.");
+                }
+                
+                const scanAll = document.getElementById('scanAllCheckbox')?.checked;
+                document.getElementById('statusText').innerText = scanAll ? 'Scanning (All Devices)...' : 'Scanning for PULSE_DRIVE_BLE...';
+                
+                const options = {};
+                if (scanAll) {
+                    options.acceptAllDevices = true;
+                    options.optionalServices = ['19b10000-e8f2-537e-4f6c-d104768a1214'];
+                } else {
+                    options.filters = [
+                        { name: 'PULSE_DRIVE_BLE' },
+                        { name: 'PulseDrive_BLE' },
+                        { namePrefix: 'PULSE' },
+                        { namePrefix: 'Pulse' },
+                        { namePrefix: 'ESP32' },
+                        { services: ['19b10000-e8f2-537e-4f6c-d104768a1214'] }
+                    ];
+                    options.optionalServices = ['19b10000-e8f2-537e-4f6c-d104768a1214'];
+                }
+
+                const device = await navigator.bluetooth.requestDevice(options);
+                activeBleDevice = device;
+
+                document.getElementById('statusText').innerText = 'Connecting to GATT Server...';
+                const server = await device.gatt.connect();
+
+                document.getElementById('statusText').innerText = 'Getting Service...';
+                const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
+                
+                document.getElementById('statusText').innerText = 'Getting Characteristic...';
+                const characteristic = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
+
+                await characteristic.startNotifications();
+                characteristic.addEventListener('characteristicvaluechanged', handleBleNotification);
+                
+                // Disconnection handler
+                device.addEventListener('gattserverdisconnected', onBleDisconnected);
+
+                isBluetoothConnected = true;
+                document.getElementById('statusDot').className = 'status-dot connected';
+                document.getElementById('statusText').innerText = 'Connected (50Hz Active)';
+            } catch (err) {
+                console.error("Bluetooth Pairing Error:", err);
+                document.getElementById('statusText').innerText = 'Pairing Failed: ' + err.message;
+            }
+        }
+
+        function onBleDisconnected(event) {
+            console.log("BLE Device Disconnected");
+            isBluetoothConnected = false;
+            document.getElementById('statusDot').className = 'status-dot';
+            document.getElementById('statusText').innerText = 'Disconnected (Click Pair to Reconnect)';
+        }
+
+        // Parse Bluetooth BLE Notification Packets
+        function handleBleNotification(event) {
+            const decoder = new TextDecoder('utf-8');
+            const jsonStr = decoder.decode(event.target.value);
+            
+            document.getElementById('rawJsonOutput').innerText = jsonStr;
+
+            try {
+                const data = JSON.parse(jsonStr);
+                updateDashboard(data);
+            } catch (e) {
+                console.error("JSON Error:", e);
+            }
+        }
+
+        function updateDashboard(data) {
+            const m1 = data.mpu1 || {};
+            const m2 = data.mpu2 || {};
+
+            document.getElementById('gx1Val').innerText = m1.gx || 0;
+            document.getElementById('gy1Val').innerText = m1.gy || 0;
+            document.getElementById('gz1Val').innerText = m1.gz || 0;
+
+            document.getElementById('ax2Val').innerText = m2.ax || 0;
+            document.getElementById('ay2Val').innerText = m2.ay || 0;
+            document.getElementById('az2Val').innerText = m2.az || 0;
+            document.getElementById('gx2Val').innerText = m2.gx || 0;
+            document.getElementById('gy2Val').innerText = m2.gy || 0;
+            document.getElementById('gz2Val').innerText = m2.gz || 0;
+
+            // Calibration Offsets (based on completely stationary flat telemetry)
+            const m1_gx_offset = 2021;
+            const m1_gy_offset = -108;
+            const m1_gz_offset = -312;
+
+            const m2_ax_offset = 2764;
+            const m2_ay_offset = 1012;
+            const m2_az_offset = 15964;
+            const m2_gx_offset = 62;
+            const m2_gy_offset = 62;
+            const m2_gz_offset = -15;
+
+            // Calculate raw pitch and apply base offset calibration
+            let rawPitch = 0;
+            if (m2.ax !== undefined || m2.ay !== undefined || m2.az !== undefined) {
+                const ax = m2.ax !== undefined ? m2.ax : m2_ax_offset;
+                const ay = m2.ay !== undefined ? m2.ay : m2_ay_offset;
+                const az = m2.az !== undefined ? m2.az : m2_az_offset;
+                rawPitch = Math.atan2(ax, Math.sqrt(ay * ay + az * az)) * 180.0 / Math.PI;
+            }
+            
+            // Base pitch when flat and stationary is ~9.8 degrees. Calibrate it to 0.
+            const basePitchOffset = Math.atan2(m2_ax_offset, Math.sqrt(m2_ay_offset * m2_ay_offset + m2_az_offset * m2_az_offset)) * 180.0 / Math.PI;
+            const calibratedPitch = rawPitch - basePitchOffset;
+            
+            document.getElementById('carSim').style.transform = `rotate(${-calibratedPitch}deg)`;
+
+            const temp = data.temperature || 25.0;
+            document.getElementById('tempVal').innerText = temp.toFixed(1);
+
+            const smoke = data.smoke || 0;
+            document.getElementById('smokeVal').innerText = smoke;
+            document.getElementById('gasBar').style.width = `${(smoke / 1023.0) * 100}%`;
+
+            // --- 1. Vehicle State Classification ---
+            // Calculate dynamic accelerometer & gyroscope deviation from baseline
+            const dev_ax2 = (m2.ax !== undefined ? m2.ax : m2_ax_offset) - m2_ax_offset;
+            const dev_ay2 = (m2.ay !== undefined ? m2.ay : m2_ay_offset) - m2_ay_offset;
+            const dev_az2 = (m2.az !== undefined ? m2.az : m2_az_offset) - m2_az_offset;
+            const m2AccMag = Math.sqrt(dev_ax2 * dev_ax2 + dev_ay2 * dev_ay2 + dev_az2 * dev_az2);
+
+            const dev_gx2 = (m2.gx !== undefined ? m2.gx : m2_gx_offset) - m2_gx_offset;
+            const dev_gy2 = (m2.gy !== undefined ? m2.gy : m2_gy_offset) - m2_gy_offset;
+            const dev_gz2 = (m2.gz !== undefined ? m2.gz : m2_gz_offset) - m2_gz_offset;
+            const m2GyroMag = Math.sqrt(dev_gx2 * dev_gx2 + dev_gy2 * dev_gy2 + dev_gz2 * dev_gz2);
+
+            let vehicleState = 0; // Stationary
+            let vehicleStateStr = 'Stationary';
+            let vehicleStateClass = 'status-good';
+
+            // Apply 3.0 degrees of freedom tolerance for tilt noise filtering
+            if (calibratedPitch > 3.0) {
+                vehicleState = 2; // Inclined
+                vehicleStateStr = 'Inclined';
+                vehicleStateClass = 'status-warning';
+            } else if (calibratedPitch < -3.0) {
+                vehicleState = 3; // Declined
+                vehicleStateStr = 'Declined';
+                vehicleStateClass = 'status-warning';
+            } else if (m2GyroMag > 350 || m2AccMag > 1000) {
+                vehicleState = 1; // Moving
+                vehicleStateStr = 'Moving';
+                vehicleStateClass = 'status-good';
+            }
+
+            const vehicleStateBox = document.getElementById('vehicleStateVal');
+            vehicleStateBox.innerText = vehicleStateStr;
+            vehicleStateBox.className = `ai-class-status ${vehicleStateClass}`;
+            document.getElementById('vehicleStateClass').innerText = `Classification: Class ${vehicleState}`;
+
+            if (vehicleState !== prevVehicleState) {
+                if (prevVehicleState !== -1) {
+                    if (vehicleState === 0) logAgenticOrchestration("[Telemetry Agent] Vehicle is stationary. Putting sensors in low-power pooling mode.");
+                    else if (vehicleState === 1) logAgenticOrchestration("[Telemetry Agent] Motion detected. Starting vehicle performance profiling.");
+                    else if (vehicleState === 2) logAgenticOrchestration("[Suspension Agent] Pitch detected (Incline). Activating active hill climb torque vectoring.");
+                    else if (vehicleState === 3) logAgenticOrchestration("[Braking Agent] Pitch detected (Decline). Priming regenerative braking system.");
+                }
+                prevVehicleState = vehicleState;
+            }
+
+            // --- 2. Wheel Imbalance Classification ---
+            const dev_gx1 = (m1.gx !== undefined ? m1.gx : m1_gx_offset) - m1_gx_offset;
+            const dev_gy1 = (m1.gy !== undefined ? m1.gy : m1_gy_offset) - m1_gy_offset;
+            const dev_gz1 = (m1.gz !== undefined ? m1.gz : m1_gz_offset) - m1_gz_offset;
+            const m1GyroMag = Math.sqrt(dev_gx1 * dev_gx1 + dev_gy1 * dev_gy1 + dev_gz1 * dev_gz1);
+
+            let wheelImbalance = 0; // Balanced
+            let wheelImbalanceStr = 'Balanced';
+            let wheelImbalanceClass = 'status-good';
+
+            if (m1GyroMag > 800) {
+                wheelImbalance = 1; // Imbalance
+                wheelImbalanceStr = 'Imbalance';
+                wheelImbalanceClass = 'status-danger';
+            }
+
+            const wheelImbalanceBox = document.getElementById('wheelImbalanceVal');
+            wheelImbalanceBox.innerText = wheelImbalanceStr;
+            wheelImbalanceBox.className = `ai-class-status ${wheelImbalanceClass}`;
+            document.getElementById('wheelImbalanceClass').innerText = `Classification: Class ${wheelImbalance}`;
+
+            if (wheelImbalance !== prevWheelImbalance) {
+                if (prevWheelImbalance !== -1) {
+                    if (wheelImbalance === 1) logAgenticOrchestration("[Vibration Agent] WARNING: Wheel vibration anomaly detected! Triggering maintenance recommendation.");
+                    else logAgenticOrchestration("[Vibration Agent] Vibration stabilized. Diagnostic cleared.");
+                }
+                prevWheelImbalance = wheelImbalance;
+            }
+
+            // --- 3. Smoke Hazard Classification ---
+            let smokeHazard = 0; // Normal
+            let smokeHazardStr = 'Normal';
+            let smokeHazardClass = 'status-good';
+
+            if (smoke > 450) {
+                smokeHazard = 1; // Smoke Hazard
+                smokeHazardStr = 'Smoke Hazard';
+                smokeHazardClass = 'status-danger';
+            }
+
+            const smokeHazardBox = document.getElementById('smokeHazardVal');
+            smokeHazardBox.innerText = smokeHazardStr;
+            smokeHazardBox.className = `ai-class-status ${smokeHazardClass}`;
+            document.getElementById('smokeHazardClass').innerText = `Classification: Class ${smokeHazard}`;
+
+            if (smokeHazard !== prevSmokeHazard) {
+                if (prevSmokeHazard !== -1) {
+                    if (smokeHazard === 1) logAgenticOrchestration("[Safety Agent] CRITICAL: Smoke sensor threshold exceeded! Initiating emergency call protocol via Twilio Voice Concierge.");
+                    else logAgenticOrchestration("[Safety Agent] Air quality normalized. Safety alerts cleared.");
+                }
+                prevSmokeHazard = smokeHazard;
+            }
+
+            // Accumulate last 20 orchestration results
+            recentOrchestrations.push({
+                vehicleState,
+                wheelImbalance,
+                smokeHazard
+            });
+            if (recentOrchestrations.length > 20) {
+                recentOrchestrations.shift();
+            }
+
+            // Calculate overall condition from the last 15-20 samples
+            const badge = document.getElementById('vehicleHealthBadge');
+            if (badge) {
+                if (recentOrchestrations.length < 15) {
+                    badge.innerText = 'CALCULATING HEALTH...';
+                    badge.className = 'health-badge status-normal-bg';
+                } else {
+                    let smokeCount = 0;
+                    let imbalanceCount = 0;
+                    let slopeCount = 0;
+
+                    recentOrchestrations.forEach(o => {
+                        if (o.smokeHazard === 1) smokeCount++;
+                        if (o.wheelImbalance === 1) imbalanceCount++;
+                        if (o.vehicleState === 2 || o.vehicleState === 3) slopeCount++;
+                    });
+
+                    let overallCondition = 'HEALTHY CONDITION';
+                    let conditionClass = 'status-healthy-bg';
+
+                    if (smokeCount > 0) {
+                        overallCondition = 'CRITICAL CONDITION';
+                        conditionClass = 'status-critical-bg';
+                    } else if (imbalanceCount >= 5) {
+                        overallCondition = 'BAD CONDITION';
+                        conditionClass = 'status-bad-bg';
+                    } else if (imbalanceCount > 0 || slopeCount > 0) {
+                        overallCondition = 'NORMAL CONDITION';
+                        conditionClass = 'status-normal-bg';
+                    } else {
+                        overallCondition = 'HEALTHY CONDITION';
+                        conditionClass = 'status-healthy-bg';
+                    }
+
+                    badge.innerText = overallCondition;
+                    badge.className = `health-badge ${conditionClass}`;
+                }
+            }
+
+            // Update Chart
+            dataIndex++;
+            chartData.labels.push(dataIndex);
+            chartData.datasets[0].data.push(m1.gx || 0);
+            chartData.datasets[1].data.push(temp);
+            chartData.datasets[2].data.push(smoke);
+
+            if (chartData.labels.length > 100) {
+                chartData.labels.shift();
+                chartData.datasets[0].data.shift();
+                chartData.datasets[1].data.shift();
+                chartData.datasets[2].data.shift();
+            }
+            masterChart.update('none');
+        }
+
+        // Auto Poll Local USB/WiFi JSON Feed as fallback (20ms interval for 50Hz rendering)
+        setInterval(async () => {
+            if (!isBluetoothConnected) {
+                try {
+                    const res = await fetch('/json');
+                    if (res.ok) {
+                        const mongoData = await res.json();
+                        const converted = {
+                            timestamp: Date.now(),
+                            mpu1: { gx: mongoData.mpu1.gyroX, gy: mongoData.mpu1.gyroY, gz: mongoData.mpu1.gyroZ },
+                            mpu2: { ax: mongoData.mpu2.accX, ay: mongoData.mpu2.accY, az: mongoData.mpu2.accZ, gx: mongoData.mpu2.gyroX, gy: mongoData.mpu2.gyroY, gz: mongoData.mpu2.gyroZ },
+                            temperature: mongoData.temperature,
+                            smoke: mongoData.gasSensor.value
+                        };
+
+                        // Check if values returned by local server are just zeros (meaning no UDP stream is actively feeding the Python server)
+                        const allZeros = (
+                            mongoData.mpu1.gyroX === 0 && mongoData.mpu1.gyroY === 0 && mongoData.mpu1.gyroZ === 0 &&
+                            mongoData.mpu2.gyroX === 0 && mongoData.mpu2.gyroY === 0 && mongoData.mpu2.gyroZ === 0 &&
+                            mongoData.mpu2.accX === 0 && mongoData.mpu2.accY === 0 && mongoData.mpu2.accZ === 0
+                        );
+
+                        if (allZeros) {
+                            document.getElementById('rawJsonOutput').innerText = 
+                                `[WARNING] Receiving HTTP Fallback data, but all sensor values are 0.\n` +
+                                `This means the local Python server is NOT receiving active UDP telemetry on port 5005.\n\n` +
+                                `To view live telemetry, either:\n` +
+                                `1. Enable Web Bluetooth in Chrome (see guide below) and pair directly with PULSE_DRIVE_BLE.\n` +
+                                `2. Configure your ESP32/vehicle to stream UDP packets over Wi-Fi to this machine's IP address on port 5005.\n\n` +
+                                `--------------------------------------------------------\n` +
+                                `LINUX CHROME WEB BLUETOOTH SETUP GUIDE:\n` +
+                                `1. Open a new tab in Google Chrome and type: chrome://flags/#enable-experimental-web-platform-features\n` +
+                                `2. Change the dropdown setting to "Enabled".\n` +
+                                `3. Click the "Relaunch" button at the bottom of the page.\n` +
+                                `4. If using Snap Chrome, run this command in your terminal: \n` +
+                                `   sudo snap connect google-chrome:bluez\n` +
+                                `5. Restart system bluetooth service: \n` +
+                                `   sudo systemctl restart bluetooth\n\n` +
+                                `Current JSON response from server:\n` +
+                                JSON.stringify(converted, null, 2);
+                        } else {
+                            document.getElementById('rawJsonOutput').innerText = JSON.stringify(converted, null, 2);
+                        }
+
+                        updateDashboard(converted);
+                        
+                        // Only override the status message if we are not currently scanning or connecting via BLE
+                        const statusTxt = document.getElementById('statusText').innerText;
+                        if (!statusTxt.startsWith("Scanning") && !statusTxt.startsWith("Connecting") && !statusTxt.startsWith("Pairing Failed")) {
+                            document.getElementById('statusDot').className = 'status-dot connected';
+                            document.getElementById('statusText').innerText = 'Streaming Live 50Hz Telemetry (HTTP Fallback)';
+                        }
+                    }
+                } catch (e) {}
+            }
+        }, 20);
+    </script>
+</body>
+</html>
